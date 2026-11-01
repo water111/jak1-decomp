@@ -2,7 +2,13 @@
 #define SSOUND_H
 
 extern int gTrapSRAM;
-void SetBufferMem(void *memory, unsigned int size);
+extern int gStreamSRAM;
+extern int gVoice;
+extern VolumePair gPanTable[361];
+
+void SetBufferMem(void* memory, unsigned int size);
 void ReleaseBufferMem(void);
+int CalculateFalloffVolume(Vec3w* position, int volume, int curve, int min, int max);
+unsigned int CalculateAngle(Vec3w* position);
 
 #endif

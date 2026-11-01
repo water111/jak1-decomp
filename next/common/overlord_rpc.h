@@ -24,6 +24,17 @@ typedef struct RamdiskCommand {
   char name[16];
 } RamdiskCommand;
 
+
+// DGO
+#define DGO_RPC_ID 0xdeb4
+#define DGO_RPC_LOAD_FNO 0
+#define DGO_RPC_LOAD_NEXT_FNO 1
+#define DGO_RPC_CANCEL_FNO 2
+#define DGO_RPC_RESULT_DONE 0
+#define DGO_RPC_RESULT_ERROR 1
+#define DGO_RPC_RESULT_MORE 2
+#define DGO_RPC_RESULT_ABORTED 3
+
 typedef struct DgoRpcCommand {
   unsigned short reserved;
   unsigned short result;
