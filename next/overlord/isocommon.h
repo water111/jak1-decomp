@@ -7,6 +7,8 @@
 #define BUFFER_PAGE_SIZE 0xc000
 #define STR_BUFFER_DATA_SIZE 0x6000
 
+#define SECTOR_SIZE 2048
+
 // Command IDs
 #define LOAD_TO_EE_CMD_ID 0x100
 #define LOAD_TO_IOP_CMD_ID 0x101
@@ -266,5 +268,7 @@ typedef struct DgoCommand {
 typedef struct VolumePair {
   short left, right;
 } VolumePair;
+
+void MakeISOName(char *dest, const char *src);
 
 #endif

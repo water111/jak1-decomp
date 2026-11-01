@@ -9,4 +9,7 @@ int GetISOFileLength(FileRecord *file);
 void SetVAGVol();
 #endif
 
+extern int iso_mbx;
+extern MusicTweaks gMusicTweakInfo;
+
 #endif
