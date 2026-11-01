@@ -1,0 +1,51 @@
+--- a/gcc-2.8.1/obstack.h
++++ b/gcc-2.8.1/obstack.h
+@@ -418,7 +418,7 @@
+ ({ struct obstack *__o = (OBSTACK);					\
+    if (__o->next_free + sizeof (void *) > __o->chunk_limit)		\
+      _obstack_newchunk (__o, sizeof (void *));				\
+-   *((void **)__o->next_free)++ = ((void *)datum);			\
++   { *((void **)__o->next_free) = ((void *)datum); __o->next_free += sizeof (void *); }			\
+    (void) 0; })
+ 
+ # define obstack_int_grow(OBSTACK,datum)				\
+@@ -426,7 +426,7 @@
+ ({ struct obstack *__o = (OBSTACK);					\
+    if (__o->next_free + sizeof (int) > __o->chunk_limit)		\
+      _obstack_newchunk (__o, sizeof (int));				\
+-   *((int *)__o->next_free)++ = ((int)datum);				\
++   { *((int *)__o->next_free) = ((int)datum); __o->next_free += sizeof (int); }				\
+    (void) 0; })
+ 
+ # define obstack_ptr_grow_fast(h,aptr) (*((void **) (h)->next_free)++ = (void *)aptr)
+--- a/binutils-2.9.1/include/obstack.h
++++ b/binutils-2.9.1/include/obstack.h
+@@ -392,7 +392,7 @@
+    if (__o->next_free + sizeof (void *) > __o->chunk_limit)		\
+      _obstack_newchunk (__o, sizeof (void *));				\
+    if (!__o->alloc_failed)						\
+-     *((void **)__o->next_free)++ = ((void *)datum);			\
++     { *((void **)__o->next_free) = ((void *)datum); __o->next_free += sizeof (void *); }			\
+    (void) 0; })
+ 
+ #define obstack_int_grow(OBSTACK,datum)					\
+@@ -401,7 +401,7 @@
+    if (__o->next_free + sizeof (int) > __o->chunk_limit)		\
+      _obstack_newchunk (__o, sizeof (int));				\
+    if (!__o->alloc_failed)						\
+-     *((int *)__o->next_free)++ = ((int)datum);				\
++     { *((int *)__o->next_free) = ((int)datum); __o->next_free += sizeof (int); }				\
+    (void) 0; })
+ 
+ #define obstack_ptr_grow_fast(h,aptr) (*((void **) (h)->next_free)++ = (void *)aptr)
+--- a/binutils-2.9.1/gas/config/tc-mips.c
++++ b/binutils-2.9.1/gas/config/tc-mips.c
+@@ -11003,7 +11003,7 @@
+       fixptr = fragp->fr_literal + fragp->fr_fix;
+ 
+       if (new > 0)
+-	memcpy (fixptr - old, fixptr, new);
++	memmove (fixptr - old, fixptr, new);
+ 
+       fragp->fr_fix += new - old;
+     }
