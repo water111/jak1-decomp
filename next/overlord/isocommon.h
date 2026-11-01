@@ -260,6 +260,7 @@ typedef struct DgoCommand {
 
 #define CMD_STATUS_IN_PROGRESS (-1)
 #define CMD_STATUS_DONE 0
+#define CMD_STATUS_QUEUE_FULL 2
 #define CMD_STATUS_UNKNOWN_COMMAND 4
 #define CMD_STATUS_FAILED_TO_OPEN 6
 #define CMD_STATUS_NULL_CB 7

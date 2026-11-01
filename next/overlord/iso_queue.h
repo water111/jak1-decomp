@@ -1,6 +1,8 @@
 #ifndef ISO_QUEUE_H
 #define ISO_QUEUE_H
 
+#include "overlord/isocommon.h"
+
 void InitBuffers(void);
 IsoBufferHeader* AllocateBuffer(unsigned int size);
 void FreeBuffer(IsoBufferHeader* buffer);

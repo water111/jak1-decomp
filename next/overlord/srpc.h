@@ -9,4 +9,8 @@ extern unsigned int gDirtyCD;
 extern unsigned int gDiskSpeed[2];
 extern unsigned int gLastSpeed;
 
+int VBlank_Handler(void* arg);
+unsigned int Thread_Player(void);
+unsigned int Thread_Loader(void);
+
 #endif

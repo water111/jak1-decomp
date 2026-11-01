@@ -36,6 +36,7 @@ struct ThreadParam {
 extern int CreateThread(struct ThreadParam* param);
 extern int StartThread(int thid, u_long arg);
 extern int SleepThread();
+extern int WakeupThread(int thid);
 
 struct SysClock {
   u_int low;
@@ -43,5 +44,19 @@ struct SysClock {
 };
 
 extern int GetSystemTime(struct SysClock* clock);
+
+struct SemaParam {
+  u_int attr;
+  u_int option;
+  int initCount;
+  int maxCount;
+};
+
+extern int CreateSema(struct SemaParam* param);
+extern int SignalSema(int semid);
+extern int WaitSema(int semid);
+
+#define AT_THPRI 1
+#define SA_THPRI AT_THPRI
 
 #endif
