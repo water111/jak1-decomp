@@ -24,6 +24,7 @@ struct Revision {
     defines: &'static [&'static str],
     overlord_import_source_name: &'static str,
     overlord_sha256: &'static str,
+    overlord_embedded_iso_api: bool,
 }
 
 // Hashes and assembler filenames from the original Jak 1 reference IRXs.
@@ -34,6 +35,7 @@ const REVISIONS: &[Revision] = &[
         defines: &["REVISION=20010903", "MEDIA_DVD", "VIDEO_NTSC", "REGION_US"],
         overlord_import_source_name: "/tmp/ccZqpG4m_ilb_stub.s",
         overlord_sha256: "308136f13a9b482c17e5a4ebad11d3516c5c968ea0667b5983433bc2f567d228",
+        overlord_embedded_iso_api: true,
     },
     Revision {
         name: "jak1/20010920/ntsc/jp",
@@ -47,6 +49,7 @@ const REVISIONS: &[Revision] = &[
         ],
         overlord_import_source_name: "/tmp/ccbEm3wW_ilb_stub.s",
         overlord_sha256: "c61f18891950cdf25bef2f5f01c9fe61971d2dbe5bd86d00bf6e8d6fc3b9d253",
+        overlord_embedded_iso_api: true,
     },
     Revision {
         name: "jak1/20011002/ntsc/us",
@@ -61,6 +64,7 @@ const REVISIONS: &[Revision] = &[
         ],
         overlord_import_source_name: "/tmp/ccBwnfyn_ilb_stub.s",
         overlord_sha256: "92c6a94204c1c260b9117161fc2745cabbaf83cd4654183e0b1415ffca531db1",
+        overlord_embedded_iso_api: true,
     },
     Revision {
         name: "jak1/20011019/ntsc/us",
@@ -68,6 +72,7 @@ const REVISIONS: &[Revision] = &[
         defines: &["REVISION=20011019", "MEDIA_DVD", "VIDEO_NTSC", "REGION_US"],
         overlord_import_source_name: "/tmp/ccoZdIg7_ilb_stub.s",
         overlord_sha256: "3666828b35268d746603f6d2b0cb07e6a4a1cdee9980beb5e2326d19f792d621",
+        overlord_embedded_iso_api: true,
     },
     Revision {
         name: "jak1/20011031/ntsc/us",
@@ -75,6 +80,7 @@ const REVISIONS: &[Revision] = &[
         defines: &["REVISION=20011031", "MEDIA_DVD", "VIDEO_NTSC", "REGION_US"],
         overlord_import_source_name: "/tmp/cc4fRwXd_ilb_stub.s",
         overlord_sha256: "fe4869449b4046aa937b08dae6138eb77bd52e9562807e02c2af9eb2a740e974",
+        overlord_embedded_iso_api: false,
     },
     Revision {
         name: "jak1/20011102/pal/eu",
@@ -89,6 +95,7 @@ const REVISIONS: &[Revision] = &[
         ],
         overlord_import_source_name: "/tmp/cc3gKh6w_ilb_stub.s",
         overlord_sha256: "076dfe24f616f0866ea154ab983b33eacdae1eadc37e80f853a9db08901039fa",
+        overlord_embedded_iso_api: false,
     },
     Revision {
         name: "jak1/20011104/pal/eu",
@@ -96,6 +103,7 @@ const REVISIONS: &[Revision] = &[
         defines: &["REVISION=20011104", "MEDIA_DVD", "VIDEO_PAL", "REGION_EU"],
         overlord_import_source_name: "/tmp/cc0IkaSo_ilb_stub.s",
         overlord_sha256: "ad030cf8e74ebda385ad4dd32cf1feb6e1fc3e7c665f3fc90f46d5a2664dc93a",
+        overlord_embedded_iso_api: false,
     },
     Revision {
         name: "jak1/20011111/pal/eu",
@@ -109,6 +117,7 @@ const REVISIONS: &[Revision] = &[
         ],
         overlord_import_source_name: "/tmp/ccvWdLOm_ilb_stub.s",
         overlord_sha256: "7ea80571d692e8ae9f516f28668d37267c14bb826a7795df440318b05c6321fb",
+        overlord_embedded_iso_api: false,
     },
     Revision {
         name: "jak1/20011121/ntsc/jp",
@@ -116,6 +125,7 @@ const REVISIONS: &[Revision] = &[
         defines: &["REVISION=20011121", "MEDIA_DVD", "VIDEO_NTSC", "REGION_JP"],
         overlord_import_source_name: "/tmp/ccz4l3Vr_ilb_stub.s",
         overlord_sha256: "265a697e65062117793f152b48c2456cd19c5537569bbbe6ea5dbcddc5813646",
+        overlord_embedded_iso_api: false,
     },
     Revision {
         name: "jak1/20011127/ntsc/us",
@@ -123,6 +133,7 @@ const REVISIONS: &[Revision] = &[
         defines: &["REVISION=20011127", "MEDIA_DVD", "VIDEO_NTSC", "REGION_US"],
         overlord_import_source_name: "/tmp/ccz4l3Vr_ilb_stub.s",
         overlord_sha256: "265a697e65062117793f152b48c2456cd19c5537569bbbe6ea5dbcddc5813646",
+        overlord_embedded_iso_api: false,
     },
     Revision {
         name: "jak1/20020121/ntsc/kr",
@@ -130,6 +141,7 @@ const REVISIONS: &[Revision] = &[
         defines: &["REVISION=20020121", "MEDIA_DVD", "VIDEO_NTSC", "REGION_KR"],
         overlord_import_source_name: "/tmp/cc4fRwXd_ilb_stub.s",
         overlord_sha256: "fe4869449b4046aa937b08dae6138eb77bd52e9562807e02c2af9eb2a740e974",
+        overlord_embedded_iso_api: false,
     },
 ];
 
@@ -260,6 +272,9 @@ fn build_revision(revision: &Revision) -> io::Result<BuildResult> {
         let link = build_dir.join(format!("src/{directory}/{file}.c"));
         let target = source_dir.join(format!("overlord/{file}.c"));
         if fs::read_link(&link).ok().as_ref() != Some(&target) {
+            if fs::symlink_metadata(&link).is_ok() {
+                fs::remove_file(&link)?;
+            }
             std::os::unix::fs::symlink(target, link)?;
         }
     }
@@ -343,6 +358,9 @@ rule iop_irx
     // OVERLORD compilation:
     let mut objects = Vec::new();
     for file in OVERLORD_FILES {
+        if *file == "iso_api" && revision.overlord_embedded_iso_api {
+            continue;
+        }
         let output = format!("overlord/{file}");
         let source_name = if matches!(*file, "isocommon" | "isodesc" | "soundcommon") {
             format!("../common/{file}.c")

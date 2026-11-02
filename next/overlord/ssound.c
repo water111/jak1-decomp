@@ -328,7 +328,9 @@ static void UpdateLocation(Sound* sound) {
 #if REVISION > 20011002
   int volume;
 #endif
-#if REVISION <= 20011002
+#if REVISION <= 20010903
+  if (sound->id && sound->bank_entry->falloff_curve) {
+#elif REVISION <= 20011002
   if (sound->id && (sound->bank_entry->falloff >> 28)) {
 #else
   if (sound->id) {
@@ -468,7 +470,10 @@ typedef struct SoundMemory {
   int size, used;
 } SoundMemory;
 
-#if REVISION <= 20011002
+#if REVISION <= 20010903
+#define COMMON_BANK_SIZE 0x5c00
+#define MUSIC_SEQUENCE_BUFFER_SIZE 0x7000
+#elif REVISION <= 20011002
 #define COMMON_BANK_SIZE 0x8000
 #define MUSIC_SEQUENCE_BUFFER_SIZE 0x6800
 #else

@@ -2,6 +2,7 @@
 #include "overlord/iso.h"
 #include "overlord/isocommon.h"
 #include "overlord/overlord.h"
+#include "overlord/ramdisk.h"
 #include "overlord/soundcommon.h"
 #include "overlord/srpc.h"
 #include "sce/iop/libcdvd.h"
@@ -19,17 +20,18 @@ static int sNumFiles = 0;
 
 #define MAX_OPEN_FILES 16
 
+#if REVISION > 20011002
 // There's a partially implemented system for storing two copies of the game data, back to back.
 // The first copy starts at sArea1, the second starts at sArea1 + sAreaDiff.
 static int sArea1 = 0;
 static int sAreaDiff = 0;
 
+#if REVISION >= 20011031
 // When piracy is detected, set pirated = 1, triggering less-than-subtle data corruption.
 // Piracy is detected by having less than 1 GB of files, likely
 // their thought is that pirates would try to get the game to run on a
 // CD instead of a DVD, which would be possible if the pirates removed
 // some of the game's languages. (in ~2001 it was harder to copy DVDs I guess)
-#if REVISION > 20011019
 static int pirated = 0;
 // Indirection to call sceCdMmode, which locks out the drive if its running on the
 // wrong media type (DVD vs. CD).
@@ -44,25 +46,33 @@ unsigned int _tsamps[2] = {0, 0};
 
 // If set, load from second copy of all data.
 int _dupseg = 0;
+#endif
 
 static int FS_Init(unsigned char* buffer);
 static FileRecord* FS_Find(const char* name);
 static FileRecord* FS_FindIN(const char* name);
 static int FS_GetLength(FileRecord* file);
 static LoadStackEntry* FS_Open(FileRecord* file, int offset);
+#if REVISION > 20010903
 static LoadStackEntry* FS_OpenWad(FileRecord* file, int offset);
+#endif
 static void FS_Close(void* fd);
 static int FS_BeginRead(void* fd, void* buffer, int length);
 static int FS_SyncRead(void);
 static int FS_LoadSoundBank(char* name, SoundBank* bank);
 static int FS_LoadMusic(char* name, void** handle);
+#if REVISION > 20011002
 static void FS_PollDrive(void);
 static void CD_WaitReturn(void);
+#endif
 
 // Create the FileSystem API
-IsoFs iso_cd = {FS_Init,     FS_Find,      FS_FindIN,   FS_GetLength,     FS_Open,      FS_OpenWad,
+IsoFs iso_cd = {FS_Init,     FS_Find,      FS_FindIN,   FS_GetLength,     FS_Open,
+#if REVISION > 20010903
+                FS_OpenWad,
+#endif
                 FS_Close,    FS_BeginRead, FS_SyncRead, FS_LoadSoundBank, FS_LoadMusic,
-#if REVISION > 20011019
+#if REVISION >= 20011031
                 FS_PollDrive
 #endif
 };
@@ -73,12 +83,21 @@ IsoFs iso_cd = {FS_Init,     FS_Find,      FS_FindIN,   FS_GetLength,     FS_Ope
 // possibly to avoid hanging on failing reads, and turns on
 // CLV (constant linear velocity) which probably gives more consistent,
 // but slower average read speeds. Unclear why these were chosen.
+#if REVISION <= 20011002
+static sceCdRMode sNominalMode = {15, SCECdSpinNom, 0, 0};
+static sceCdRMode sStreamMode = {15, SCECdSpinStm, 0, 0};
+static sceCdRMode* sMode = &sNominalMode;
+#else
 static sceCdRMode sNominalMode = {0, SCECdSpinNom, 0, 0};
 static sceCdRMode sStreamMode = {15, SCECdSpinStm, 0, 0};
 static sceCdRMode* sMode = &sStreamMode;
+#endif
 
 // In-progress read info.
 static LoadStackEntry* sReadInfo = 0;
+#if REVISION <= 20011002
+unsigned int speeds_seqno = 0;
+#endif
 
 // Table of all files on DVD. Avoids the need to read filesystem
 // data off the DVD on each read.
@@ -87,9 +106,11 @@ static FileRecord sFiles[MAX_ISO_FILES];
 // Contents and location of the ID file. The game reads this to detect if you've
 // swapped the disc to a different one. This contains "random" 32-bit integers,
 // just the straight output of glibc rand().
+#if REVISION > 20011002
 static unsigned int CD_ID_Sector[SECTOR_SIZE / 4];
 static int CD_ID_SectorNum;
 static unsigned int CD_ID_SectorSum;
+#endif
 
 // Sector buffers used for initialization.
 static unsigned char* sSecBuffer[3];
@@ -100,8 +121,16 @@ static LoadStackEntry sLoadStack[MAX_OPEN_FILES];
 // If set, recursive directory traversal adds files.
 // This is used to avoid adding files outside Jak for
 // shared demos
+#if REVISION > 20010903
 static int add_files;
+#endif
 
+#if REVISION <= 20011002
+void* _buffer;
+int _sectors;
+int _sector;
+unsigned int speeds[41];
+#else
 // Current/previous read's real DVD sector.
 int _real_sector;
 // Retry count during normal reading
@@ -120,6 +149,7 @@ int _sector;
 struct SysClock _endtime;
 // Read durations
 unsigned int _times[16];
+#endif
 
 // Read a possibly misaligned 32-bit little endian integer.
 static unsigned int ReadU32(unsigned char* p) {
@@ -130,6 +160,20 @@ static unsigned int ReadU32(unsigned char* p) {
 // This is only for metadata loading and doesn't work with
 // the normal read tracking system.
 // Still sets gDirtyCD if it fails.
+#if REVISION <= 20011002
+static int ReadSectorsNow(int sector, int count, void* buffer) {
+  int error;
+  if (!sceCdRead(sector, count, buffer, sMode)) {
+    return 0;
+  }
+  sceCdSync(0);
+  error = sceCdGetError();
+  if (!error) {
+    return 1;
+  }
+  return 0;
+}
+#else
 static int ReadSectorsNow(int sector, int count, void* buffer) {
   int error;
   // invalidate read tracking.
@@ -147,6 +191,7 @@ static int ReadSectorsNow(int sector, int count, void* buffer) {
     gDirtyCD = 1;
   }
 }
+#endif
 
 // Recursively read directory structure and add files to
 // the file table. If add_files is on, it adds files.
@@ -179,10 +224,21 @@ static int ReadDirectory(int sector, int length, int depth) {
         file_length = ReadU32(entry + 10);
         name_length = *(entry + 32);
         directory = 1;
+#if REVISION <= 20011002
+        name_offset = 0;
+        while (name_offset < depth) {
+          name_offset++;
+        }
+#endif
         if (entry[name_length + 31] == ';' && entry[name_length + 32] == '1') {
           directory = 0;
         }
         if (directory) {
+#if REVISION <= 20010903
+          if (!ReadDirectory(location, file_length, depth + 1)) {
+            return 0;
+          }
+#else
           if (add_files) {
             if (!ReadDirectory(location, file_length, depth + 1)) {
               return 0;
@@ -194,9 +250,14 @@ static int ReadDirectory(int sector, int length, int depth) {
             }
             add_files = 0;
           }
+#endif
         } else if (sNumFiles == MAX_ISO_FILES) {
           return 0;
+#if REVISION <= 20010903
+        } else {
+#else
         } else if (add_files) {
+#endif
           entry[name_length + 31] = 0;
           MakeISOName(sFiles[sNumFiles].name.chars, entry + 33);
           sFiles[sNumFiles].location = location;
@@ -212,7 +273,37 @@ static int ReadDirectory(int sector, int length, int depth) {
   return 1;
 }
 
-#if REVISION <= 20011019
+#if REVISION <= 20011002
+int TimedCDRead(int sector, int count, void *buffer, sceCdRMode *mode) {
+  struct SysClock start;
+  struct SysClock end;
+  GetSystemTime(&start);
+  if (!sceCdRead(sector, count, buffer, mode)) {
+    return 0;
+  }
+  sceCdSync(0);
+  GetSystemTime(&end);
+  return end.low - start.low;
+}
+
+void TimeDVD(void) {
+  int i;
+  int total;
+  int sector;
+  for (i = 0; i < 41; i++) {
+    total = 0;
+    sector = i * 0x10000 + 0x400;
+    TimedCDRead(sector, 0x100, gRamdiskRAM, &sStreamMode);
+    total += TimedCDRead(sector + 0x100, 0x100, gRamdiskRAM, &sNominalMode);
+    total += TimedCDRead(sector + 0x200, 0x100, gRamdiskRAM, &sNominalMode);
+    total += TimedCDRead(sector + 0x300, 0x100, gRamdiskRAM, &sNominalMode);
+    total += TimedCDRead(sector + 0x400, 0x100, gRamdiskRAM, &sNominalMode);
+    speeds[i] = total;
+    speeds_seqno++;
+  }
+}
+#else
+#if REVISION < 20011031
 #define DUP_INDEX "1_INDEX.DUP"
 #define DUP_AREA1 "3_AREA1.DUP"
 #define DUP_AREA2 "5_AREA2.DUP"
@@ -331,7 +422,7 @@ static void SetRealSector(void) {
     _real_sector = _sector;
   }
 
-#if defined(MEDIA_DVD) && REVISION > 20011019
+#if REVISION >= 20011031 && defined(MEDIA_DVD)
   if (pirated) {
     _real_sector += 3;
   }
@@ -339,6 +430,83 @@ static void SetRealSector(void) {
 }
 
 // Initialize the filesystem.
+#endif
+
+#if REVISION <= 20011002
+static int FS_Init(unsigned char* buffer) {
+  int i;
+  int disk_type;
+  int sector;
+  int length;
+  for (;;) {
+    disk_type = sceCdGetDiskType();
+    if (disk_type != SCECdDETCT) {
+      break;
+    }
+    SleepThread(10000);
+  }
+  switch (disk_type) {
+    case SCECdIllgalMedia:
+      return 1;
+    case SCECdPS2CD:
+      break;
+    case SCECdPS2CDDA:
+      break;
+    case SCECdPS2DVD:
+      break;
+    case SCECdPSCD:
+      break;
+    case SCECdPSCDDA:
+      break;
+    case SCECdDVDV:
+      break;
+    case SCECdCDDA:
+      break;
+    case SCECdNODISC:
+      break;
+    default:
+      break;
+  }
+  for (i = 0; i < 3; i++) {
+    sSecBuffer[i] = buffer + i * SECTOR_SIZE;
+  }
+  if (!ReadSectorsNow(16, 1, sSecBuffer[0])) {
+    return 1;
+  }
+  if (memcmp(sSecBuffer[0] + 1, "CD001", 5)) {
+    return 1;
+  }
+  sector = ReadU32(sSecBuffer[0] + 140);
+  if (!ReadSectorsNow(sector, 1, sSecBuffer[0])) {
+    return 1;
+  }
+  sector = ReadU32(sSecBuffer[0] + 2);
+  if (!ReadSectorsNow(sector, 1, sSecBuffer[0])) {
+    return 1;
+  }
+  length = ReadU32(sSecBuffer[0] + 10);
+#if REVISION > 20010903
+#ifdef SHARED_DEMO
+  add_files = 0;
+#else
+  add_files = 1;
+#endif
+#endif
+  if (!ReadDirectory(sector, length, 0)) {
+    return 1;
+  }
+  for (i = 0; i < sNumFiles; i++) {
+    FileRecord* file = &sFiles[i];
+  }
+  for (i = 0; i < MAX_OPEN_FILES; i++) {
+    sLoadStack[i].file = 0;
+  }
+  for (i = 0; i < 3; i++) {
+    sSecBuffer[i] = 0;
+  }
+  return 0;
+}
+#else
 static int FS_Init(unsigned char* buffer) {
   int i;
   int disk_type;
@@ -435,6 +603,7 @@ static int FS_Init(unsigned char* buffer) {
   }
   return 0;
 }
+#endif
 
 // Find by name
 static FileRecord* FS_Find(const char* name) {
@@ -505,6 +674,7 @@ static LoadStackEntry* FS_Open(FileRecord* file, int offset) {
 }
 
 // Open a file within a WAD at the given offset.
+#if REVISION > 20010903
 static LoadStackEntry* FS_OpenWad(FileRecord* file, int offset) {
   LoadStackEntry* entry = 0;
   int i;
@@ -521,6 +691,7 @@ static LoadStackEntry* FS_OpenWad(FileRecord* file, int offset) {
   entry->location = file->location + offset;
   return entry;
 }
+#endif
 
 // Close a file, syncing on CD drive if still in progress.
 static void FS_Close(void* fd) {
@@ -546,6 +717,20 @@ static void FS_Close(void* fd) {
 }
 
 // Begin reading a file.
+#if REVISION <= 20011002
+static int FS_BeginRead(void* fd, void* buffer, int length) {
+  LoadStackEntry* entry = fd;
+  _sector = entry->location;
+  _sectors = length / SECTOR_SIZE;
+  _buffer = buffer;
+  if (!sceCdRead(entry->location, length / SECTOR_SIZE, buffer, sMode)) {
+    return 1;
+  }
+  entry->location += length / SECTOR_SIZE;
+  sReadInfo = entry;
+  return CMD_STATUS_IN_PROGRESS;
+}
+#else
 static int FS_BeginRead(void* fd, void* buffer, int length) {
   LoadStackEntry* entry = fd;
 
@@ -586,8 +771,24 @@ static int FS_BeginRead(void* fd, void* buffer, int length) {
   sReadInfo = entry;
   return CMD_STATUS_IN_PROGRESS;
 }
+#endif
 
 // Wait for read completion. If failed, reissue the read and retry until success.
+#if REVISION <= 20011002
+static int FS_SyncRead(void) {
+  int error;
+  if (!sReadInfo) {
+    return CMD_STATUS_READ_ERR;
+  }
+  sceCdSync(0);
+  sReadInfo = 0;
+  error = sceCdGetError();
+  if (!error) {
+    return CMD_STATUS_IN_PROGRESS;
+  }
+  return 1;
+}
+#else
 static int FS_SyncRead(void) {
   struct SysClock before_sync;
   int error;
@@ -708,14 +909,51 @@ static int FS_SyncRead(void) {
   }
   return CMD_STATUS_IN_PROGRESS;
 }
+#endif
 
 // Load the soundbank.
+#if REVISION <= 20011002
+static int FS_LoadSoundBank(char* name, SoundBank* bank) {
+  char filename[16];
+  FileRecord* file;
+  void* handle;
+#if REVISION <= 20010903
+  int sectors = 4;
+#else
+  int sectors;
+  if (bank->sound_count == 101) {
+    sectors = 1;
+  } else {
+    sectors = 10;
+  }
+#endif
+  strcpy(filename, name);
+  filename[8] = 0;
+  strcat(filename, ".sbk");
+  file = FS_Find(filename);
+  if (!file) {
+    return CMD_STATUS_FAILED_TO_OPEN;
+  }
+  if (!ReadSectorsNow(file->location, sectors, bank)) {
+    bank->bank_handle = 0;
+    return 1;
+  }
+  handle = snd_BankLoadByLoc(file->location + sectors, 0);
+  if (!handle) {
+    return 1;
+  }
+  snd_ResolveBankXREFS();
+  PrintBankInfo(bank);
+  bank->bank_handle = handle;
+  return 0;
+}
+#else
 static int FS_LoadSoundBank(char* name, SoundBank* bank) {
   char filename[16];
   FileRecord* file;
   void* handle;
   int sectors;
-#if REVISION > 20011019
+#if REVISION >= 20011031
   static int sound_bank_loads;
 #endif
 
@@ -780,7 +1018,7 @@ static int FS_LoadSoundBank(char* name, SoundBank* bank) {
   // every 7th sound load, confirm that files reach past 1 GB on disc,
   // indicating a real DVD, not a partial copy of the game on CD.
   // If not, set pirated = 1.
-#if defined(MEDIA_DVD) && REVISION > 20011019
+#if REVISION >= 20011031 && defined(MEDIA_DVD)
   if (!(++sound_bank_loads & 7)) {
     int i;
     pirated = 1;
@@ -800,8 +1038,30 @@ static int FS_LoadSoundBank(char* name, SoundBank* bank) {
   bank->bank_handle = handle;
   return 0;
 }
+#endif
 
 // Load music
+#if REVISION <= 20011002
+static int FS_LoadMusic(char* name, void* *bank_handle) {
+  char filename[16];
+  FileRecord* file;
+  void* handle;
+  strcpy(filename, name);
+  filename[8] = 0;
+  strcat(filename, ".mus");
+  file = FS_Find(filename);
+  if (!file) {
+    return CMD_STATUS_FAILED_TO_OPEN;
+  }
+  handle = snd_BankLoadByLoc(file->location, 0);
+  if (!handle) {
+    return 1;
+  }
+  snd_ResolveBankXREFS();
+  *bank_handle = handle;
+  return 0;
+}
+#else
 static int FS_LoadMusic(char* name, void** bank_handle) {
   char filename[16];
   FileRecord* file;
@@ -819,7 +1079,7 @@ static int FS_LoadMusic(char* name, void** bank_handle) {
   // Read file
   _sector = file->location;
   SetRealSector();
-#if defined(MEDIA_DVD) && REVISION > 20011019
+#if REVISION >= 20011031 && defined(MEDIA_DVD)
   // piracy check: effectively disables drive if not DVD.
   cdmmode(SCECdDVD);
 #endif
@@ -848,16 +1108,19 @@ static int FS_LoadMusic(char* name, void** bank_handle) {
   *bank_handle = handle;
   return 0;
 }
+#endif
 
+#if REVISION > 20011002
+#if REVISION >= 20011031
 // Poll to see if the CD is in there or not.
 // If not, run CD_WaitReturn to wait for it to come back.
-#if REVISION > 20011019
 static void FS_PollDrive(void) {
   int status = sceCdDiskReady(1);  // poll
   if (status == SCECdNotReady) {
     CD_WaitReturn();
   }
 }
+
 #endif
 
 static void CD_WaitReturn(void) {
@@ -878,8 +1141,9 @@ static void CD_WaitReturn(void) {
     }
     // if it's the wrong disc, open the drive. I guess this was removed on a later revision.
     // Possible against TRC or guidelines.
-#if REVISION >= 20011019 && REVISION < 20011031
-    sceCdTrayReq(SCECdTrayOpen, 0);
+#if REVISION < 20011031
+    sceCdTrayReq(0, 0);
 #endif
   }
 }
+#endif

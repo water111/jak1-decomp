@@ -32,8 +32,15 @@ void ReadBankSoundInfo(SoundBank* bank, const char* name, int host) {
   int count = 0;
   int i;
   char filename[128];
-  for (i = 0; i < bank->sound_count; i++)
+  for (i = 0; i < bank->sound_count; i++) {
+#if REVISION <= 20010903
+    bank->sound[i].falloff_min = 5;
+    bank->sound[i].falloff_max = 30;
+    bank->sound[i].falloff_curve = 1;
+#else
     bank->sound[i].falloff = 5 | (30 << 14) | (1 << 28);
+#endif
+  }
   if (host)
     sprintf(filename, "host0:data/sound1/%s.txt", name);
   else
@@ -105,7 +112,13 @@ void ReadBankSoundInfo(SoundBank* bank, const char* name, int host) {
               *cursor++ = 0;
             if (cursor > start)
               curve = atoi(start);
+#if REVISION <= 20010903
+            bank->sound[index].falloff_min = min;
+            bank->sound[index].falloff_max = max;
+            bank->sound[index].falloff_curve = curve;
+#else
             bank->sound[index].falloff = (max << 14) | min | (curve << 28);
+#endif
             break;
           }
         }
@@ -215,7 +228,12 @@ void PrintBankInfo(SoundBank* bank) {
   printf("Bank %s\n\n", bank->name);
   for (i = 0; i < bank->sound_count; i++) {
     SoundRecord* sound = &bank->sound[i];
+#if REVISION <= 20010903
+    printf("%d : %16s : min %d max %d curve %d\n", i, sound->name, sound->falloff_min,
+           sound->falloff_max, sound->falloff_curve);
+#else
     printf("%d : %16s : min %d max %d curve %d\n", i, sound->name, sound->falloff & 0x3fff,
            (sound->falloff >> 14) & 0x3fff, sound->falloff >> 28);
+#endif
   }
 }

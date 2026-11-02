@@ -1,6 +1,8 @@
 #ifndef _LIBCDVD_H
 #define _LIBCDVD_H
 
+#include "sce/iop/types.h"
+
 #define SCECdSpinNom 1
 #define SCECdSpinStm 0
 
@@ -13,6 +15,7 @@ typedef struct {
 
 int sceCdRead(u_int lbn, u_int sectors, void* buf, sceCdRMode* mode);
 
+int sceCdTrayReq(int request, unsigned int* tray);
 int sceCdSync(int mode);
 int sceCdGetError(void);
 int sceCdGetDiskType(void);

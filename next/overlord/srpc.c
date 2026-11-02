@@ -14,6 +14,9 @@
 #include "sce/iop/sysmem.h"
 #include "sce/iop/thread.h"
 
+// Sound RPC for sound effects and loading.
+
+// Disk speed benchmark.
 #if REVISION <= 20011002
 extern unsigned int speeds[41];
 extern unsigned int speeds_seqno;
@@ -39,8 +42,10 @@ int gMusicFadeDir = 0;
 #if REVISION > 20011002
 int gMusicTweak = 0x80;
 #endif
+#if REVISION > 20010903
 int gMusicPause = 0;
 int gSoundEnable = 1;
+#endif
 static unsigned char gPlayerBuf[80 * 128];
 static unsigned char gLoaderBuf[80];
 static void* gMusic;
@@ -72,6 +77,261 @@ unsigned int Thread_Loader(void) {
   return 0;
 }
 
+#if REVISION <= 20010903
+static void* RPC_Player(unsigned int fno, void* data, int size) {
+  unsigned char* cursor = data;
+  int count = size / 80;
+  int result;
+  gFreeMem = QueryTotalFreeMemSize();
+  result = PollSema(gSema);
+  if (!result) {
+    if (gMusic) {
+      int id = MUSIC_SOUND_ID;
+      if (!LookupSound(id)) {
+        Sound* music = AllocateSound(1);
+        if (music) {
+          gMusicFade = 0;
+          gMusicFadeDir = 1;
+          SetMusicVol();
+          music->sound_handle = snd_PlaySoundVolPanPMPB(gMusic, 0, 0x400, -1, 0, 0);
+          music->id = id;
+          music->is_music = 1;
+        }
+      }
+    }
+    SignalSema(gSema);
+  }
+  while (count > 0) {
+    SoundRpcCommand* command = (SoundRpcCommand* )cursor;
+    switch (command->command) {
+      case PLAY_SOUND: {
+        SoundRpcCommand* cmd = command;
+        if (cmd->args.play.id) {
+          SoundBank* bank;
+          int index = LookupSoundIndex(cmd->args.play.name, &bank);
+          if (index < 0) {
+            if (!memcmp(cmd->args.play.name, "spool-", 6)) {
+              IsoName name;
+              FileRecord* file;
+              char* literal = &cmd->args.play.name[6];
+              int length = strlen(literal);
+              int i;
+              if (length > 8) {
+                memcpy(name.chars, literal, 8);
+              } else {
+                memset(name.chars, ' ', 8);
+                memcpy(name.chars, literal, length);
+              }
+              for (i = 0; i < 8; i++) {
+                if (name.chars[i] >= 'a' && name.chars[i] <= 'z') name.chars[i] -= 32;
+              }
+              strcpy(&name.chars[8], "INT");
+              file = isofs->find_in(name.chars);
+              if (!file) {
+                strcpy(&name.chars[8], gLanguage);
+                file = isofs->find_in(name.chars);
+              }
+              if (!file) {
+              } else {
+                PlayVAGStream(file, cmd->args.play.id, cmd->args.play.params.volume, 0);
+              }
+            }
+          } else {
+            unsigned int id = cmd->args.play.id;
+            Sound* sound;
+            int volume;
+            int pan;
+            sound = LookupSound(id);
+            if (sound) {
+              memcpy(&sound->params, &cmd->args.play.params, sizeof(SoundParams));
+              sound->bank_entry = &bank->sound[index];
+              sound->is_music = 0;
+              if (!(sound->params.mask & 0x40))
+                sound->params.fo_min = sound->bank_entry->falloff_min;
+              if (!(sound->params.mask & 0x80))
+                sound->params.fo_max = sound->bank_entry->falloff_max;
+              if (!(sound->params.mask & 0x100))
+                sound->params.fo_curve = sound->bank_entry->falloff_curve;
+              UpdateVolume(sound);
+            } else {
+              sound = AllocateSound();
+              if (!sound) goto play_done;
+              memcpy(&sound->params, &cmd->args.play.params, sizeof(SoundParams));
+              sound->bank_entry = &bank->sound[index];
+              sound->is_music = 0;
+              sound->auto_time = 0;
+              if (!(sound->params.mask & 0x40))
+                sound->params.fo_min = sound->bank_entry->falloff_min;
+              if (!(sound->params.mask & 0x80))
+                sound->params.fo_max = sound->bank_entry->falloff_max;
+              if (!(sound->params.mask & 0x100))
+                sound->params.fo_curve = sound->bank_entry->falloff_curve;
+              volume = GetVolume(sound);
+              pan = GetPan(sound);
+              sound->sound_handle =
+                  snd_PlaySoundVolPanPMPB(bank->bank_handle, index, volume, pan,
+                                          sound->params.pitch_mod, sound->params.bend);
+              if (!sound->sound_handle) goto play_done;
+              sound->id = id;
+            }
+          }
+        }
+      }
+      play_done:
+        break;
+      case PAUSE_SOUND:
+      case STOP_SOUND:
+      case CONTINUE_SOUND:
+      case SET_PARAM: {
+        SoundRpcCommand* cmd = command;
+        Sound* sound;
+        if (cmd->args.param.id) {
+          sound = LookupSound(cmd->args.param.id);
+          if (!sound) {
+            if (cmd->args.param.id == gVAG_Id) {
+              switch (cmd->command) {
+                case PAUSE_SOUND:
+                  PauseVAGStream();
+                  break;
+                case STOP_SOUND:
+                  StopVAGStream(0, 0);
+                  break;
+                case CONTINUE_SOUND:
+                  UnpauseVAGStream();
+                  break;
+                case SET_PARAM: {
+                  SoundRpcCommand* param = command;
+                  unsigned short mask = param->args.param.params.mask;
+                  if (mask & 1) SetVAGStreamVolume(param->args.param.params.volume);
+                } break;
+              }
+            }
+          } else {
+            switch (cmd->command) {
+              case PAUSE_SOUND:
+                snd_PauseSound(sound->sound_handle);
+                break;
+              case STOP_SOUND:
+                snd_StopSound(sound->sound_handle);
+                break;
+              case CONTINUE_SOUND:
+                snd_ContinueSound(sound->sound_handle);
+                break;
+              case SET_PARAM: {
+                SoundRpcCommand* param = command;
+                unsigned short mask = param->args.param.params.mask;
+                int time = *(int *)&param->args.param.automatic[0];
+                int from = *(int *)&param->args.param.automatic[4];
+                if (mask & 1) {
+                  if (mask & 0x10) {
+                    sound->auto_time = time;
+                    sound->new_volume = param->args.param.params.volume;
+                  } else {
+                    sound->params.volume = param->args.param.params.volume;
+                  }
+                }
+                if (mask & 0x20) {
+                  sound->params.position.x = param->args.param.params.position.x;
+                  sound->params.position.y = param->args.param.params.position.y;
+                  sound->params.position.z = param->args.param.params.position.z;
+                }
+                if (mask & 0x21) UpdateVolume(sound);
+                if (mask & 2) {
+                  sound->params.pitch_mod = param->args.param.params.pitch_mod;
+                  if (mask & 0x10)
+                    snd_AutoPitch(sound->sound_handle, sound->params.pitch_mod, time, from);
+                  else
+                    snd_SetSoundPitchModifier(sound->sound_handle,
+                                              param->args.param.params.pitch_mod);
+                }
+                if (mask & 4) {
+                  sound->params.bend = param->args.param.params.bend;
+                  if (mask & 0x10)
+                    snd_AutoPitchBend(sound->sound_handle, sound->params.bend, time, from);
+                  else
+                    snd_SetSoundPitchBend(sound->sound_handle, param->args.param.params.bend);
+                }
+              } break;
+            }
+          }
+        }
+      } break;
+      case PAUSE_GROUP: {
+        SoundRpcCommand* cmd = command;
+        unsigned char group = cmd->args.group.group;
+        snd_PauseAllSoundsInGroup(group);
+        if (group & 4) PauseVAGStream();
+      } break;
+      case CONTINUE_GROUP: {
+        SoundRpcCommand* cmd = command;
+        unsigned char group = cmd->args.group.group;
+        snd_ContinueAllSoundsInGroup(group);
+        if (group & 4) UnpauseVAGStream();
+      } break;
+      case STOP_GROUP: {
+        SoundRpcCommand* cmd = command;
+        unsigned char group = cmd->args.group.group;
+        KillSoundsInGroup(group);
+        if (group & 4) StopVAGStream(0, 0);
+      } break;
+      case SET_MASTER_VOLUME: {
+        SoundRpcCommand* cmd = command;
+        unsigned char group = cmd->args.master.group;
+        int i;
+        for (i = 0; i < 32; i++) {
+          if ((group >> i) & 1) {
+            if (i == 1) {
+              gMusicVol = cmd->args.master.volume;
+              if (!gMusicFadeDir) SetMusicVol();
+            }
+            else if (i == 2) {
+            } else
+              snd_SetMasterVolume(i, cmd->args.master.volume);
+          }
+        }
+      } break;
+      case SET_REVERB: {
+        SoundRpcCommand* cmd = command;
+        snd_SetReverbType(cmd->args.reverb.core, cmd->args.reverb.type);
+        snd_SetReverbDepth(cmd->args.reverb.core, cmd->args.reverb.left,
+                           cmd->args.reverb.right);
+      } break;
+      case SET_EAR_TRANS: {
+        SoundRpcCommand* cmd = command;
+        SetEarTrans(&cmd->args.ear.ear, &cmd->args.ear.camera, cmd->args.ear.angle);
+      } break;
+      case SET_FALLOFF_CURVE: {
+        SoundRpcCommand* cmd = command;
+        SetCurve(cmd->args.curve.curve, cmd->args.curve.falloff, cmd->args.curve.ease);
+      } break;
+      case SET_SOUND_FALLOFF: {
+        SoundRpcCommand* cmd = command;
+        SoundBank* bank;
+        int index = LookupSoundIndex(cmd->args.falloff.name, &bank);
+        if (index < 0) goto falloff_done;
+        bank->sound[index].falloff_curve = cmd->args.falloff.curve;
+        bank->sound[index].falloff_min = cmd->args.falloff.min;
+        bank->sound[index].falloff_max = cmd->args.falloff.max;
+      falloff_done:;
+      } break;
+      case SET_FLAVA: {
+        SoundRpcCommand* cmd = command;
+        Sound* music = LookupSound(MUSIC_SOUND_ID);
+        if (music) {
+          snd_SetMIDIRegister(music->sound_handle, 0, cmd->args.flava.value);
+          __asm__(".set noreorder\n\tj 1f\n\tnop\n1:\n\t.set reorder");
+        }
+      }
+        break;
+      default:
+        break;
+    }
+    count--;
+    cursor += 80;
+  }
+  return 0;
+}
+#else
 static void* RPC_Player(unsigned int fno, void* data, int size) {
   unsigned char* cursor = data;
   int count = size / 80;
@@ -429,12 +689,15 @@ static void* RPC_Player(unsigned int fno, void* data, int size) {
 #endif
   return 0;
 }
+#endif
 
 static void* RPC_Loader(unsigned int fno, void* data, int size) {
   unsigned char* cursor = data;
   int count = size / 80;
+#if REVISION > 20010903
   if (!gSoundEnable)
     return 0;
+#endif
   while (count > 0) {
     SoundRpcCommand* command = (SoundRpcCommand*)cursor;
     switch (command->command) {
@@ -530,8 +793,10 @@ int VBlank_Handler(void* arg) {
   int i;
   static int dmaid = 0;
   static SoundIopInfo info;
+#if REVISION > 20010903
   if (!gSoundEnable)
     return 1;
+#endif
   if (gMusicFadeDir < 0) {
     gMusicFade -= 512;
     if (gMusicFade < 0) {

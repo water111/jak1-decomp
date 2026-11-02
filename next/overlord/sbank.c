@@ -1,6 +1,11 @@
 #include "overlord/isocommon.h"
 #include "overlord/soundcommon.h"
 
+#if REVISION <= 20010903
+// earlier versions used the same soundbank size for all sounds
+static SoundBank gBanks[3];
+#else
+// Later versions are a hacky mess to make common bigger.
 // Three soundbanks: single very large common bank and 2 smaller level banks.
 // these banks only hold metadata, the actual bank data is managed by 989snd.
 static unsigned char gCommonBank[10 * SECTOR_SIZE];
@@ -8,13 +13,21 @@ static unsigned char gLevelBank[2][SECTOR_SIZE];
 static SoundBank* gBanks[3] = {(SoundBank*)gCommonBank, (SoundBank*)gLevelBank[0],
                                (SoundBank*)gLevelBank[1]};
 
+#endif
+
 // Initialize bank structures.
 void InitBanks(void) {
   int i;
   for (i = 0; i < 3; i++) {
+#if REVISION <= 20010903
+    gBanks[i].bank_handle = 0;
+    gBanks[i].sound_count = 0;
+    strcpy(gBanks[i].name, "<unused>");
+#else
     gBanks[i]->bank_handle = 0;
     gBanks[i]->sound_count = 0;
     strcpy(gBanks[i]->name, "<unused>");
+#endif
   }
 }
 
@@ -26,12 +39,17 @@ void InitBanks(void) {
 SoundBank* AllocateBank(void) {
   int i;
   for (i = 0; i < 3; i++) {
+#if REVISION <= 20010903
+    if (!gBanks[i].bank_handle) {
+      return &gBanks[i];
+#else
     if (!gBanks[i]->bank_handle) {
       if (i)
         gBanks[i]->sound_count = 101;
       else
         gBanks[i]->sound_count = 1022;
       return gBanks[i];
+#endif
     }
   }
   return 0;
@@ -42,7 +60,11 @@ int LookupSoundIndex(const char* name, SoundBank** bank_out) {
   int i;
   const unsigned int* words = (const unsigned int*)name;
   for (i = 0; i < 3; i++) {
+#if REVISION <= 20010903
+    SoundBank* bank = &gBanks[i];
+#else
     SoundBank* bank = gBanks[i];
+#endif
     int j;
     if (!bank->bank_handle)
       continue;
@@ -73,7 +95,11 @@ SoundBank* LookupBank(const char* name) {
 #else
   for (i = 2; i >= 0; i--) {
 #endif
+#if REVISION <= 20010903
+    SoundBank* bank = &gBanks[i];
+#else
     SoundBank* bank = gBanks[i];
+#endif
     const unsigned int* candidate = (const unsigned int*)bank->name;
     if (!bank->bank_handle)
       continue;
@@ -88,7 +114,11 @@ SoundBank* LookupBank(const char* name) {
 void ReloadBankInfo(void) {
   int i;
   for (i = 0; i < 3; i++) {
+#if REVISION <= 20010903
+    SoundBank* bank = &gBanks[i];
+#else
     SoundBank* bank = gBanks[i];
+#endif
     if (bank->bank_handle)
       ReadBankSoundInfo(bank, bank->name, 1);
   }

@@ -14,6 +14,9 @@ typedef struct StrFileHeader {
 
 typedef struct CacheEntry {
   FileRecord* file;
+#if REVISION <= 20010903
+  FileRecord* vag_file;
+#endif
   int countdown;
   StrFileHeader header;
 } CacheEntry;
@@ -64,11 +67,15 @@ unsigned int PLAYThread(void) {
 static void* RPC_STR(unsigned int fno, void* data, int size) {
   StrCommand* cmd = data;
   char name[16];
-#if REVISION <= 20011002
+#if REVISION <= 20010903
+  char vag_name[16];
+#elif REVISION <= 20011002
   char vag_wad_name[16];
 #endif
   FileRecord* file;
-#if REVISION <= 20011002
+#if REVISION <= 20010903
+  FileRecord* vag_file;
+#elif REVISION <= 20011002
   FileRecord* vag_wad;
   VagDirEntry* vag;
 #endif
@@ -85,7 +92,18 @@ static void* RPC_STR(unsigned int fno, void* data, int size) {
       return cmd;
     }
 
-#if REVISION <= 20011002
+#if REVISION <= 20010903
+    memcpy(vag_name, name, 12);
+    strcpy(&vag_name[8], "INT");
+    vag_file = isofs->find_in(vag_name);
+    if (!vag_file) {
+      strcpy(&vag_name[8], gLanguage);
+      vag_file = isofs->find_in(vag_name);
+    }
+    if (!vag_file) {
+      __asm__(".set noreorder\n\tj 1f\n\tnop\n1:\n\t.set reorder");
+    }
+#elif REVISION <= 20011002
     memcpy(vag_wad_name, "VAGWAD  ", 8);
     strcpy(&vag_wad_name[8], gLanguage);
     vag_wad = isofs->find_in(vag_wad_name);
@@ -109,6 +127,9 @@ static void* RPC_STR(unsigned int fno, void* data, int size) {
     if (entry == STREAM_CACHE_ENTRIES) {
       entry = oldest_entry;
       sCache[entry].file = file;
+#if REVISION <= 20010903
+      sCache[entry].vag_file = vag_file;
+#endif
       sCache[entry].countdown = 0x7ffffffe;
       if (!LoadISOFileToIOP(file, &sCache[entry].header, sizeof(StrFileHeader))) {
         cmd->result = 1;
@@ -124,7 +145,11 @@ static void* RPC_STR(unsigned int fno, void* data, int size) {
       cmd->length = sCache[entry].header.sizes[cmd->chunk_id];
       cmd->result = 0;
     }
-#if REVISION <= 20011002
+#if REVISION <= 20010903
+    if (vag_file) {
+      QueueVAGStream(vag_file, 0, 1);
+    }
+#elif REVISION <= 20011002
     if (vag) {
       QueueVAGStream(vag_wad, vag, 0, 1);
     }
@@ -147,12 +172,20 @@ static void* RPC_STR(unsigned int fno, void* data, int size) {
 }
 
 static void* RPC_PLAY(unsigned int fno, void* data, int size) {
-#if REVISION <= 20011002
+#if REVISION <= 20010903
+  PlayCommand* cmd = data;
+#elif REVISION <= 20011002
   PlayCommand* cmd;
 #endif
   char name[16];
   FileRecord* file;
+#if REVISION <= 20010903
+  char* literal;
+  int length;
+  int i;
+#else
   VagDirEntry* vag;
+#endif
 #if REVISION > 20011002
   int count = size / 64;
   int message;
@@ -161,10 +194,10 @@ static void* RPC_PLAY(unsigned int fno, void* data, int size) {
   static int global_vag_count;
 #endif
 
-#if REVISION <= 20011002
+#if REVISION > 20010903 && REVISION <= 20011002
   {
     cmd = data;
-#else
+#elif REVISION > 20011002
   for (message = 0; message < count; message++) {
     PlayCommand* cmd = (PlayCommand*)data + message;
     fno = cmd->result;
@@ -174,9 +207,14 @@ static void* RPC_PLAY(unsigned int fno, void* data, int size) {
     if (cmd->name[0] != '$') {
       ISONameFromAnimationName((IsoName*)name, cmd->name);
     } else {
+#if REVISION <= 20010903
+      literal = &cmd->name[1];
+      length = strlen(literal);
+#else
       char* literal = &cmd->name[1];
       int length = strlen(literal);
       int i;
+#endif
       if (length > 8) {
         memcpy(name, literal, 8);
       } else {
@@ -189,6 +227,16 @@ static void* RPC_PLAY(unsigned int fno, void* data, int size) {
           name[i] -= 'a' - 'A';
       }
     }
+#if REVISION <= 20010903
+    strcpy(&name[8], "INT");
+    file = isofs->find_in(name);
+    if (!file) {
+      strcpy(&name[8], gLanguage);
+      file = isofs->find_in(name);
+    }
+    if (!file) {
+    }
+#else
     vag = FindVAGFile(name);
     memcpy(name, "VAGWAD  ", 8);
     strcpy(&name[8], gLanguage);
@@ -206,8 +254,11 @@ static void* RPC_PLAY(unsigned int fno, void* data, int size) {
     }
 #endif
     file = isofs->find_in(name);
+#endif
     if (fno == 0) {
-#if REVISION <= 20011002
+#if REVISION <= 20010903
+      PlayVAGStream(file, 0, 0x400, 1);
+#elif REVISION <= 20011002
       PlayVAGStream(file, vag, 0, 0x400, 1);
 #else
       PlayVAGStream(file, vag, cmd->address, 0x400, 1, 0);
@@ -218,14 +269,20 @@ static void* RPC_PLAY(unsigned int fno, void* data, int size) {
 #else
     else if (fno == 1) {
 #endif
+#if REVISION <= 20010903
+      StopVAGStream(file, 1);
+#else
       StopVAGStream(vag, 1);
+#endif
 #if REVISION > 20011002
     }
     else {
       QueueVAGStream(file, vag, 0, 1);
 #endif
     }
+#if REVISION > 20010903
   }
+#endif
 #if REVISION <= 20011002
   return cmd;
 #else

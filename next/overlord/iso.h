@@ -17,7 +17,12 @@ extern int gFakeVAGClockRunning;
 extern int gFakeVAGClockPaused;
 extern int gFakeVAGClock;
 
+void InitDriver(unsigned char* buffer);
+#if REVISION <= 20010903
+unsigned int InitISOFS(const char* fs_mode);
+#else
 unsigned int InitISOFS(const char* fs_mode, const char* loading_screen);
+#endif
 VagDirEntry* FindVAGFile(const char* name);
 int GetVAGStreamPos(void);
 

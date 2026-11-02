@@ -3,6 +3,11 @@
 #include "overlord/isocommon.h"
 #include "overlord/srpc.h"
 #include "sce/iop/thread.h"
+#include "sce/iop/string.h"
+
+#ifdef ISO_API_EMBEDDED
+#line 1076 "iso.c"
+#endif
 
 // Blocking load file to IOP. This thread sleeps, allowing others to run while the load
 // happens.
@@ -92,6 +97,7 @@ void LoadMusic(const char* name, void** bank) {
   return;
 }
 
+#if REVISION > 20010903
 // The actual implementation of this ends up
 // making the iso thread spin forever, unclear why you'd want this.
 void ShutdownFilingSystem(void) {
@@ -103,6 +109,8 @@ void ShutdownFilingSystem(void) {
   SleepThread();
   return;
 }
+
+#endif
 
 // The situation with VAG commands is somewhat complicated.
 // The original design is that calling these functions waits until the iso thread loop
@@ -116,7 +124,11 @@ void ShutdownFilingSystem(void) {
 // and the game itself has a better implementation of this.
 
 // Queue a VAG stream to be pre-loaded.
-void QueueVAGStream(FileRecord* file, VagDirEntry* vag, unsigned int id, unsigned int priority) {
+void QueueVAGStream(FileRecord* file,
+#if REVISION > 20010903
+                    VagDirEntry* vag,
+#endif
+                    unsigned int id, unsigned int priority) {
 #if REVISION > 20011002
   if (vag) {
 #endif
@@ -126,7 +138,9 @@ void QueueVAGStream(FileRecord* file, VagDirEntry* vag, unsigned int id, unsigne
     cmd.header.messagebox_to_reply = 0;
     cmd.header.thread_id = GetThreadId();
     cmd.file_record = file;
+#if REVISION > 20010903
     cmd.vag_entry = vag;
+#endif
     cmd.sound_id = id;
     cmd.priority = priority;
 #if REVISION > 20011002
@@ -154,7 +168,9 @@ void QueueVAGStream(FileRecord* file, VagDirEntry* vag, unsigned int id, unsigne
 // Start playing a vag stream. Queued files start immediately,
 // otherwise loads prior to playing.
 void PlayVAGStream(FileRecord* file,
+#if REVISION > 20010903
                    VagDirEntry* vag,
+#endif
                    unsigned int id,
                    int volume,
                    unsigned int priority
@@ -169,7 +185,9 @@ void PlayVAGStream(FileRecord* file,
   cmd.header.messagebox_to_reply = 0;
   cmd.header.thread_id = GetThreadId();
   cmd.file_record = file;
+#if REVISION > 20010903
   cmd.vag_entry = vag;
+#endif
   cmd.sound_id = id;
   cmd.volume = volume;
   cmd.priority = priority;
@@ -225,6 +243,7 @@ void SetVAGStreamVolume(int volume) {
 #endif
 }
 
+#if REVISION > 20010903
 // Adjust the persistent global "dialog" volume multiplier that applies to all VAGs.
 void SetDialogVolume(int volume) {
 #if REVISION < 20011031
@@ -245,14 +264,24 @@ void SetDialogVolume(int volume) {
 #endif
 }
 
+#endif
+
 // Stop VAG and unload it.
+#if REVISION <= 20010903
+void StopVAGStream(FileRecord* file, unsigned int priority) {
+#else
 void StopVAGStream(VagDirEntry* vag, unsigned int priority) {
+#endif
 #if REVISION < 20011031
   VagCommand cmd;
   cmd.header.cmd_id = STOP_VAG_STREAM;
   cmd.header.messagebox_to_reply = 0;
   cmd.header.thread_id = GetThreadId();
+#if REVISION <= 20010903
+  cmd.file_record = file;
+#else
   cmd.vag_entry = vag;
+#endif
   cmd.priority = priority;
   SendMbx(iso_mbx, (struct MsgPacket*)&cmd);
   SleepThread();

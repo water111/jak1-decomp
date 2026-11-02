@@ -62,7 +62,9 @@ int gVAG_Id = 1;
 #endif
 
 // TODO
+#if REVISION > 20010903
 int gDialogVolume = 1024;
+#endif
 
 #if REVISION > 20011002
 // The VAG command in progress.
@@ -98,7 +100,9 @@ MusicTweaks gMusicTweakInfo;
 #endif
 
 // location of audio files in WAD files.
+#if REVISION > 20010903
 VagDir gVagDir;
+#endif
 
 // result of iso thread initialization, set by iso thread.
 static unsigned int iso_init_flag;
@@ -155,16 +159,25 @@ static void WaitMbx(int mbx) {
   }
 }
 
+#if REVISION <= 20011002
+static void VAG_MarkLoopStart(unsigned char* data);
+#endif
 static unsigned int ISOThread(void);
 static unsigned int DGOThread(void);
 
 // Initialize the iso system and its threads.
 // This includes the DGO, STR, PLAY RPCs as well.
 // return 1 on success.
-unsigned int InitISOFS(const char* fs_mode, const char* loading_screen) {
+unsigned int InitISOFS(const char* fs_mode
+#if REVISION > 20010903
+                       , const char* loading_screen
+#endif
+) {
   struct ThreadParam thread;
   struct MbxParam mbx;
+#if REVISION > 20010903
   FileRecord* file;
+#endif
   isofs = &iso_cd;
 
   // threads will set this to 0 on failure
@@ -241,6 +254,7 @@ unsigned int InitISOFS(const char* fs_mode, const char* loading_screen) {
   StartThread(play_thread, 0);
   WaitMbx(sync_mbx);
 
+#if REVISION > 20010903
   // Load the VAGDIR file containing audio file locations.
   file = FindISOFile("VAGDIR.AYB");
   if (!file) {
@@ -254,6 +268,7 @@ unsigned int InitISOFS(const char* fs_mode, const char* loading_screen) {
   if (file) {
     LoadISOFileToEE(file, SPLASH_SCREEN_ADDR, 0x800000);
   }
+#endif
   return iso_init_flag;
 }
 
@@ -269,6 +284,7 @@ int GetISOFileLength(FileRecord* file) {
   return isofs->get_length(file);
 }
 
+#if REVISION > 20010903
 // Look up a VAG file's entry by name (treated as 8-bytes)
 // TODO: cleanup?
 VagDirEntry* FindVAGFile(const char* name) {
@@ -284,6 +300,8 @@ VagDirEntry* FindVAGFile(const char* name) {
   }
   return 0;
 }
+
+#endif
 
 static unsigned int NullCallback(IsoMessage*, IsoBufferHeader*);
 static unsigned int RunDGOStateMachine(IsoMessage*, IsoBufferHeader*);
@@ -449,7 +467,11 @@ static unsigned int ISOThread(void) {
         // Queue streamed audio for future playback
         VagCommand* cmd = (VagCommand*)msg;
 #if REVISION <= 20011002
+#if REVISION <= 20010903
+        if (vag && vag->file_record == cmd->file_record) {
+#else
         if (vag && vag->vag_entry == cmd->vag_entry) {
+#endif
         } else if (vag && (vag->started || !vag->paused)) {
         } else {
           // cancel existing vag, this one wins.
@@ -469,8 +491,12 @@ static unsigned int ISOThread(void) {
           // Queue and open file. The queueing adds this command to the disc I/O
           // scheduling below.
           if (QueueMessage((IsoMessage*)vag, 3, "QueueVAGStream")) {
+#if REVISION <= 20010903
+            vag->header.fd = vag->file_record ? isofs->open(vag->file_record, -1) : 0;
+#else
             vag->header.fd =
                 vag->vag_entry ? isofs->open_wad(vag->file_record, vag->vag_entry->offset) : 0;
+#endif
             vag->header.status = CMD_STATUS_IN_PROGRESS;
             vag->header.callback_function = ProcessVAGData;
           } else {
@@ -531,7 +557,11 @@ static unsigned int ISOThread(void) {
 
         // first, check if the existing vag matches
         if (vag &&
+#if REVISION <= 20010903
+            vag->file_record == cmd->file_record
+#else
             vag->vag_entry == cmd->vag_entry
+#endif
 #if REVISION > 20011002
             // don't forget file -- changes when game language changes.
             && vag->file_record == cmd->file_record
@@ -539,7 +569,9 @@ static unsigned int ISOThread(void) {
         ) {
 
           // update volume and ID (used by caller to track)
+#if REVISION > 20010903
           vag->volume = cmd->volume;
+#endif
 #if REVISION > 20011002
           vag->sound_id = cmd->sound_id;
 #endif
@@ -589,8 +621,12 @@ static unsigned int ISOThread(void) {
 
             // Queue and open the file. This sets up disc streaming of data.
             if (QueueMessage((IsoMessage*)vag, 3, "PlayVAGStream")) {
+#if REVISION <= 20010903
+              vag->header.fd = vag->file_record ? isofs->open(vag->file_record, -1) : 0;
+#else
               vag->header.fd =
                   vag->vag_entry ? isofs->open_wad(vag->file_record, vag->vag_entry->offset) : 0;
+#endif
               vag->header.status = CMD_STATUS_IN_PROGRESS;
               vag->header.callback_function = ProcessVAGData;
 #if REVISION > 20011002
@@ -629,7 +665,11 @@ static unsigned int ISOThread(void) {
 
         // stop if we have a vag command, it isn't a different audio,
         // and the command isn't lower in priority.
+#if REVISION <= 20010903
+        if (vag && (!cmd->file_record || vag->file_record == cmd->file_record) &&
+#else
         if (vag && (!cmd->vag_entry || vag->vag_entry == cmd->vag_entry) &&
+#endif
             cmd->priority >= vag->priority) {
           // nothing playing
 #if REVISION > 20011002
@@ -688,6 +728,7 @@ static unsigned int ISOThread(void) {
 #endif
         }
         ReturnMessage(msg);
+#if REVISION > 20010903
       } else if (msg->cmd_id == SET_DIALOG_VOLUME) {
         // Update volume.
         VagCommand* cmd = (VagCommand*)msg;
@@ -705,6 +746,7 @@ static unsigned int ISOThread(void) {
         ReturnMessage(msg);
         for (;;) {
         }
+#endif
       } else {
         msg->status = CMD_STATUS_UNKNOWN_COMMAND;
         ReturnMessage(msg);
@@ -1380,7 +1422,11 @@ static void UnpauseVAG(VagCommand* vag) {
     // compute volume
 #if REVISION <= 20011002
     int adjusted;
+#if REVISION <= 20010903
+    adjusted = vag->volume * 16;
+#else
     adjusted = (vag->volume * gDialogVolume) >> 6;
+#endif
     if (adjusted >= 0x4000)
       adjusted = 0x3fff;
 #else
@@ -1432,7 +1478,11 @@ void SetVAGVol(void) {
     int count = 0;
 #if REVISION <= 20011002
     int adjusted;
+#if REVISION <= 20010903
+    adjusted = vag->volume * 16;
+#else
     adjusted = (vag->volume * gDialogVolume) >> 6;
+#endif
     if (adjusted >= 0x4000)
       adjusted = 0x3fff;
 #else
@@ -1632,7 +1682,13 @@ static int CheckVAGStreamProgress(VagCommand* vag) {
   return 1;
 }
 
-// ISO API inclusion.
+// Early revisions didn't split out iso_api functions and just put them here.
+// We keep them separate and just include the file here on those older revisions
+#if REVISION <= 20011019
+#define ISO_API_EMBEDDED
+#include "overlord/iso_api.c"
+#undef ISO_API_EMBEDDED
+#endif
 
 // ISO RPCs
 
