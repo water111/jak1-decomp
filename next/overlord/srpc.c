@@ -319,7 +319,7 @@ static void* RPC_Player(unsigned int fno, void* data, int size) {
         Sound* music = LookupSound(MUSIC_SOUND_ID);
         if (music) {
           snd_SetMIDIRegister(music->sound_handle, 0, cmd->args.flava.value);
-          __asm__(".set noreorder\n\tj 1f\n\tnop\n1:\n\t.set reorder");
+        } else {
         }
       }
         break;
@@ -653,8 +653,7 @@ static void* RPC_Player(unsigned int fno, void* data, int size) {
 #else
         if (music) {
           snd_SetMIDIRegister(music->sound_handle, 0, cmd->args.flava.value);
-          // TODO can't match.
-          __asm__(".set noreorder\n\tj 1f\n\tnop\n1:\n\t.set reorder");
+        } else {
         }
 #endif
       } break;

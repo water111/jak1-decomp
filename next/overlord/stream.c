@@ -101,7 +101,7 @@ static void* RPC_STR(unsigned int fno, void* data, int size) {
       vag_file = isofs->find_in(vag_name);
     }
     if (!vag_file) {
-      __asm__(".set noreorder\n\tj 1f\n\tnop\n1:\n\t.set reorder");
+    } else {
     }
 #elif REVISION <= 20011002
     memcpy(vag_wad_name, "VAGWAD  ", 8);

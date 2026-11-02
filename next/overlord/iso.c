@@ -1545,7 +1545,7 @@ static unsigned int UpdatePlayPos(void) {
 #if REVISION <= 20011002
   {
     unsigned int b, c;
-    __asm__("nop");  // TODO
+  read_position:;
     for (;;) {
       pos = sceSdGetAddr(gVoice | SD_VA_NAX);
       b = sceSdGetAddr(gVoice | SD_VA_NAX);
