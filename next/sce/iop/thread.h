@@ -55,6 +55,7 @@ struct SemaParam {
 extern int CreateSema(struct SemaParam* param);
 extern int SignalSema(int semid);
 extern int WaitSema(int semid);
+extern int PollSema(int semid);
 
 #define AT_THPRI 1
 #define SA_THPRI AT_THPRI

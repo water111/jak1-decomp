@@ -2,5 +2,6 @@
 #define OVERLORD_H
 
 void ExitIOP(void);
+extern char* gLanguage;
 
 #endif

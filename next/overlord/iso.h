@@ -12,7 +12,13 @@ void SetVAGVol();
 extern int iso_mbx;
 extern MusicTweaks gMusicTweakInfo;
 extern IsoFs* isofs;
+extern int gVAG_Id;
+extern int gFakeVAGClockRunning;
+extern int gFakeVAGClockPaused;
+extern int gFakeVAGClock;
 
 unsigned int InitISOFS(const char* fs_mode, const char* loading_screen);
+VagDirEntry* FindVAGFile(const char* name);
+int GetVAGStreamPos(void);
 
 #endif

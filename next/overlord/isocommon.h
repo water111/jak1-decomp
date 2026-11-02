@@ -1,6 +1,7 @@
 #ifndef ISOCOMMON_H
 #define ISOCOMMON_H
 
+#include "common/overlord_rpc.h"
 #include "sce/iop/thread.h"
 
 // Streaming disc read buffer sizes
@@ -191,10 +192,6 @@ typedef struct VagDir {
 #endif
 } VagDir;
 
-typedef struct Vec3w {
-  int x, y, z;
-} Vec3w;
-
 // Message sent to play streaming audio.
 typedef struct VagCommand {
   IsoMessage header;
@@ -270,6 +267,7 @@ typedef struct VolumePair {
   short left, right;
 } VolumePair;
 
-void MakeISOName(char *dest, const char *src);
+void MakeISOName(char* dest, const char* src);
+void ISONameFromAnimationName(IsoName* dest, const char* src);
 
 #endif

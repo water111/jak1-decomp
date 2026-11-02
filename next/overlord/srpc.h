@@ -4,6 +4,8 @@
 extern unsigned int gFrameNum;
 extern int gMusicTweak;
 extern int gDupSeg;
+extern int gMusicVol;
+extern int gMusicFade;
 extern unsigned int gNoCD;
 extern unsigned int gDirtyCD;
 extern unsigned int gDiskSpeed[2];

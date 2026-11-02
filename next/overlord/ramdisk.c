@@ -1,12 +1,12 @@
 #include "overlord/ramdisk.h"
-#include "overlord/isocommon.h"
-#include "overlord/iso.h"
-#include "overlord/srpc.h"
-#include "overlord/iso_api.h"
 #include "common/overlord_rpc.h"
-#include "sce/iop/sysmem.h"
-#include "sce/iop/sifrpc.h"
+#include "overlord/iso.h"
+#include "overlord/iso_api.h"
+#include "overlord/isocommon.h"
+#include "overlord/srpc.h"
 #include "sce/iop/intrman.h"
+#include "sce/iop/sifrpc.h"
+#include "sce/iop/sysmem.h"
 #include "sce/iop/thread.h"
 
 // Handler for the RAMDISK RPC.
@@ -38,14 +38,14 @@ typedef struct RamdiskFileRecord {
 static int gNumFiles = 0;
 static int gMemUsed = 0;
 static int gMemSize;
-static unsigned char *gMem;
+static unsigned char* gMem;
 static RamdiskFileRecord gFiles[RAMDISK_MAX_FILES];
 static unsigned char gReturnBuffer[RAMDISK_RETURN_BUFFER_SIZE];
 static unsigned char gRPCBuf[sizeof(RamdiskCommand)];
-unsigned char *gRamdiskRAM;
+unsigned char* gRamdiskRAM;
 unsigned long gMemFreeAtStart;
 
-static void *RPC_Ramdisk(unsigned int fno, void *data, int size);
+static void* RPC_Ramdisk(unsigned int fno, void* data, int size);
 
 // Initialize ramdisk globals
 void InitRamdisk(void) {
@@ -59,7 +59,7 @@ void InitRamdisk(void) {
   // possibly to simulate have less free memory like retail,
   // but the sizes here don't quite seem to be enough.
   if (QueryTotalFreeMemSize() > 0x200000) {
-    void *unused = AllocSysMemory(SMEM_Low,
+    void* unused = AllocSysMemory(SMEM_Low,
 #if REVISION <= 20010903
                                   0x291c00,
 #else
@@ -91,12 +91,12 @@ unsigned int Thread_Server(void) {
 }
 
 // RPC Handler for RAMDISK requests.
-static void *RPC_Ramdisk(unsigned int fno, void *data, int size) {
+static void* RPC_Ramdisk(unsigned int fno, void* data, int size) {
   if (fno == FNO_RAMDISK_RESET_AND_LOAD) {
     // Load the file to the ramdisk
-    RamdiskCommand *cmd = data;
+    RamdiskCommand* cmd = data;
     int length;
-    FileRecord *file;
+    FileRecord* file;
     gNumFiles = 0;
     gMemUsed = 0;
 
@@ -106,7 +106,7 @@ static void *RPC_Ramdisk(unsigned int fno, void *data, int size) {
       return 0;
     }
     length = GetISOFileLength(file);
-    
+
     // bug: size check happens before alignment rounding.
     if (length + gMemUsed > gMemSize) {
       goto load_done;
@@ -115,20 +115,19 @@ static void *RPC_Ramdisk(unsigned int fno, void *data, int size) {
       goto load_done;
     }
     {
-      RamdiskFileRecord *record = &gFiles[gNumFiles++];
-      unsigned char *dest = gMem + gMemUsed;
-      unsigned int frame = gFrameNum; // unused variable
+      RamdiskFileRecord* record = &gFiles[gNumFiles++];
+      unsigned char* dest = gMem + gMemUsed;
+      unsigned int frame = gFrameNum;  // unused variable
       record->file_id = cmd->file_id_or_ee_addr;
       record->size = (length + 15) & ~15;
       record->offset = 0;
       LoadISOFileToIOP(file, dest, length);
       gMemUsed += record->size;
     }
-  load_done:
-    ;
+  load_done:;
   } else if (fno == FNO_RAMDISK_GET_DATA) {
     // Look up file by ID
-    RamdiskCommand *cmd = data;
+    RamdiskCommand* cmd = data;
     int index;
     int offset;
     offset = cmd->offset;
@@ -153,8 +152,8 @@ static void *RPC_Ramdisk(unsigned int fno, void *data, int size) {
     return gReturnBuffer;
   } else if (fno == FNO_RAMDISK_BYPASS_LOAD) {
     // Locate file and load to EE directly (streaming copy)
-    RamdiskCommand *cmd = data;
-    FileRecord *file;
+    RamdiskCommand* cmd = data;
+    FileRecord* file;
     file = FindISOFile(cmd->name);
     if (!file) {
       return 0;
