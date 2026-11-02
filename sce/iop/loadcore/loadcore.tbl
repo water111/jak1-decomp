@@ -1,0 +1,18 @@
+Libname loadcore
+Version 1.1
+Flags 0x0000
+
+Entry -	# 000
+Entry -	# 001
+Entry -	# 002
+Entry -	# 003
+Entry FlushIcache	# 004
+Entry FlushDcache	# 005
+Entry RegisterLibraryEntries	# 006
+Entry -	# 007
+Entry -	# 008
+Entry -	# 009
+Entry RegisterNonAutoLinkEntries	# 010
+Entry QueryLibraryEntryTable	# 011
+Entry QueryBootMode	# 012
+Entry RegisterBootMode	# 013

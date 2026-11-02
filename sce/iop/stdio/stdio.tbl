@@ -1,0 +1,18 @@
+Libname stdio
+Version 1.2
+Flags 0x0000
+
+Entry -	# 000
+Entry -	# 001
+Entry -	# 002
+Entry -	# 003
+Entry printf	# 004
+Entry getchar	# 005
+Entry putchar	# 006
+Entry puts	# 007
+Entry gets	# 008
+Entry fdprintf	# 009
+Entry fdgetc	# 010
+Entry fdputc	# 011
+Entry fdputs	# 012
+Entry fdgets	# 013

@@ -1,0 +1,19 @@
+Libname sysmem
+Version 1.1
+Flags 0x0000
+
+Entry -	# 000
+Entry -	# 001
+Entry -	# 002
+Entry -	# 003
+Entry AllocSysMemory	# 004
+Entry FreeSysMemory	# 005
+Entry QueryMemSize	# 006
+Entry QueryMaxFreeMemSize	# 007
+Entry QueryTotalFreeMemSize	# 008
+Entry QueryBlockTopAddress	# 009
+Entry QueryBlockSize	# 010
+Entry -	# 011
+Entry -	# 012
+Entry -	# 013
+Entry Kprintf	# 014

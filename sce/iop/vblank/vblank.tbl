@@ -1,0 +1,14 @@
+Libname vblank
+Version 1.1
+Flags 0x0000
+
+Entry -	# 000
+Entry -	# 001
+Entry -	# 002
+Entry -	# 003
+Entry WaitVblankStart	# 004
+Entry WaitVblankEnd	# 005
+Entry WaitVblank	# 006
+Entry WaitNonVblank	# 007
+Entry RegisterVblankHandler	# 008
+Entry ReleaseVblankHandler	# 009

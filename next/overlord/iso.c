@@ -1077,7 +1077,7 @@ static unsigned int ProcessVAGData(IsoMessage* _cmd, IsoBufferHeader* buffer_hea
 #endif
 
     // VAG headers can have either endianness.
-    if (data->magic != VAG_HEADER_MAGIC_SWAPPED && data->magic != VAG_HEADER_SIZE) {
+    if (data->magic != VAG_HEADER_MAGIC_SWAPPED && data->magic != VAG_HEADER_MAGIC) {
       vag->invalid_header = 1;
       buffer_header->data_size = 0;
       return CMD_STATUS_IN_PROGRESS;

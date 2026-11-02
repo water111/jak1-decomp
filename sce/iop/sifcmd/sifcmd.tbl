@@ -1,0 +1,30 @@
+Libname sifcmd
+Version 1.1
+Flags 0x0000
+
+Entry -	# 000
+Entry -	# 001
+Entry -	# 002
+Entry -	# 003
+Entry sceSifInitCmd	# 004
+Entry sceSifExitCmd	# 005
+Entry sceSifGetSreg	# 006
+Entry sceSifSetSreg	# 007
+Entry sceSifSetCmdBuffer	# 008
+Entry -	# 009
+Entry sceSifAddCmdHandler	# 010
+Entry sceSifRemoveCmdHandler	# 011
+Entry sceSifSendCmd	# 012
+Entry isceSifSendCmd	# 013
+Entry sceSifInitRpc	# 014
+Entry sceSifBindRpc	# 015
+Entry sceSifCallRpc	# 016
+Entry sceSifRegisterRpc	# 017
+Entry sceSifCheckStatRpc	# 018
+Entry sceSifSetRpcQueue	# 019
+Entry sceSifGetNextRequest	# 020
+Entry sceSifExecRequest	# 021
+Entry sceSifRpcLoop	# 022
+Entry sceSifGetOtherData	# 023
+Entry sceSifRemoveRpc	# 024
+Entry sceSifRemoveRpcQueue	# 025

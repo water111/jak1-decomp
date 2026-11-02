@@ -1,0 +1,17 @@
+Libname thmsgbx
+Version 1.1
+Flags 0x0000
+
+Entry -	# 000
+Entry -	# 001
+Entry -	# 002
+Entry -	# 003
+Entry CreateMbx	# 004
+Entry DeleteMbx	# 005
+Entry SendMbx	# 006
+Entry iSendMbx	# 007
+Entry ReceiveMbx	# 008
+Entry PollMbx	# 009
+Entry -	# 010
+Entry ReferMbxStatus	# 011
+Entry iReferMbxStatus	# 012

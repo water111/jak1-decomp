@@ -1,0 +1,39 @@
+Libname ioman
+Version 1.4
+Flags 0x0000
+
+Entry -	# 000
+Entry -	# 001
+Entry -	# 002
+Entry -	# 003
+Entry open	# 004
+Entry close	# 005
+Entry read	# 006
+Entry write	# 007
+Entry lseek	# 008
+Entry ioctl	# 009
+Entry remove	# 010
+Entry mkdir	# 011
+Entry rmdir	# 012
+Entry dopen	# 013
+Entry dclose	# 014
+Entry dread	# 015
+Entry getstat	# 016
+Entry chstat	# 017
+Entry format	# 018
+Entry -	# 019
+Entry AddDrv	# 020
+Entry DelDrv	# 021
+Entry -	# 022
+Entry -	# 023
+Entry -	# 024
+Entry rename	# 025
+Entry chdir	# 026
+Entry sync	# 027
+Entry mount	# 028
+Entry umount	# 029
+Entry lseek64	# 030
+Entry devctl	# 031
+Entry symlink	# 032
+Entry readlink	# 033
+Entry ioctl2	# 034

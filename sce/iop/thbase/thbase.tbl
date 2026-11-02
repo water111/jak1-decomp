@@ -1,0 +1,46 @@
+Libname thbase
+Version 1.1
+Flags 0x0000
+
+Entry -	# 000
+Entry -	# 001
+Entry -	# 002
+Entry -	# 003
+Entry CreateThread	# 004
+Entry DeleteThread	# 005
+Entry StartThread	# 006
+Entry StartThreadArgs	# 007
+Entry ExitThread	# 008
+Entry ExitDeleteThread	# 009
+Entry TerminateThread	# 010
+Entry iTerminateThread	# 011
+Entry DisableDispatchThread	# 012
+Entry EnableDispatchThread	# 013
+Entry ChangeThreadPriority	# 014
+Entry iChangeThreadPriority	# 015
+Entry RotateThreadReadyQueue	# 016
+Entry iRotateThreadReadyQueue	# 017
+Entry ReleaseWaitThread	# 018
+Entry iReleaseWaitThread	# 019
+Entry GetThreadId	# 020
+Entry CheckThreadStack	# 021
+Entry ReferThreadStatus	# 022
+Entry iReferThreadStatus	# 023
+Entry SleepThread	# 024
+Entry WakeupThread	# 025
+Entry iWakeupThread	# 026
+Entry CancelWakeupThread	# 027
+Entry iCancelWakeupThread	# 028
+Entry SuspendThread	# 029
+Entry iSuspendThread	# 030
+Entry ResumeThread	# 031
+Entry iResumeThread	# 032
+Entry DelayThread	# 033
+Entry GetSystemTime	# 034
+Entry SetAlarm	# 035
+Entry iSetAlarm	# 036
+Entry CancelAlarm	# 037
+Entry iCancelAlarm	# 038
+Entry USec2SysClock	# 039
+Entry SysClock2USec	# 040
+Entry GetSystemStatusFlag	# 041

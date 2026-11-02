@@ -1,0 +1,17 @@
+Libname thsemap
+Version 1.1
+Flags 0x0000
+
+Entry -	# 000
+Entry -	# 001
+Entry -	# 002
+Entry -	# 003
+Entry CreateSema	# 004
+Entry DeleteSema	# 005
+Entry SignalSema	# 006
+Entry iSignalSema	# 007
+Entry WaitSema	# 008
+Entry PollSema	# 009
+Entry -	# 010
+Entry ReferSemaStatus	# 011
+Entry iReferSemaStatus	# 012

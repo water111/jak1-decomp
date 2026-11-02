@@ -1,0 +1,46 @@
+Libname sysclib
+Version 1.1
+Flags 0x0000
+
+Entry -	# 000
+Entry -	# 001
+Entry -	# 002
+Entry -	# 003
+Entry setjmp	# 004
+Entry longjmp	# 005
+Entry toupper	# 006
+Entry tolower	# 007
+Entry look_ctype_table	# 008
+Entry get_ctype_table	# 009
+Entry memchr	# 010
+Entry memcmp	# 011
+Entry memcpy	# 012
+Entry memmove	# 013
+Entry memset	# 014
+Entry bcmp	# 015
+Entry bcopy	# 016
+Entry bzero	# 017
+Entry prnt	# 018
+Entry sprintf	# 019
+Entry strcat	# 020
+Entry strchr	# 021
+Entry strcmp	# 022
+Entry strcpy	# 023
+Entry strcspn	# 024
+Entry index	# 025
+Entry rindex	# 026
+Entry strlen	# 027
+Entry strncat	# 028
+Entry strncmp	# 029
+Entry strncpy	# 030
+Entry strpbrk	# 031
+Entry strrchr	# 032
+Entry strspn	# 033
+Entry strstr	# 034
+Entry strtok	# 035
+Entry strtol	# 036
+Entry atob	# 037
+Entry strtoul	# 038
+Entry -	# 039
+Entry wmemcopy	# 040
+Entry wmemset	# 041

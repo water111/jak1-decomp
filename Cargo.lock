@@ -5,3 +5,15 @@ version = 4
 [[package]]
 name = "configure"
 version = "0.1.0"
+
+[[package]]
+name = "iopfixup"
+version = "0.1.0"
+
+[[package]]
+name = "ioplibgen"
+version = "0.1.0"
+
+[[package]]
+name = "ioplibld"
+version = "0.1.0"

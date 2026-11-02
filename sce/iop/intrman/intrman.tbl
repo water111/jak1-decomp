@@ -1,0 +1,30 @@
+Libname intrman
+Version 1.2
+Flags 0x0000
+
+Entry -	# 000
+Entry -	# 001
+Entry -	# 002
+Entry -	# 003
+Entry RegisterIntrHandler	# 004
+Entry ReleaseIntrHandler	# 005
+Entry EnableIntr	# 006
+Entry DisableIntr	# 007
+Entry CpuDisableIntr	# 008
+Entry CpuEnableIntr	# 009
+Entry -	# 010
+Entry -	# 011
+Entry -	# 012
+Entry -	# 013
+Entry -	# 014
+Entry -	# 015
+Entry -	# 016
+Entry CpuSuspendIntr	# 017
+Entry CpuResumeIntr	# 018
+Entry -	# 019
+Entry -	# 020
+Entry -	# 021
+Entry -	# 022
+Entry QueryIntrContext	# 023
+Entry QueryIntrStack	# 024
+Entry iCatchMultiIntr	# 025
