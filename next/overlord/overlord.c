@@ -3,11 +3,11 @@
 #include "overlord/sbank.h"
 #include "overlord/srpc.h"
 #include "overlord/ssound.h"
-#include "sce/iop/intrman.h"
-#include "sce/iop/loadcore.h"
-#include "sce/iop/sif.h"
-#include "sce/iop/thread.h"
-#include "sce/iop/vblank.h"
+#include "sce/iop/intrman/intrman.h"
+#include "sce/iop/loadcore/loadcore.h"
+#include "sce/iop/sifman/sif.h"
+#include "sce/iop/thbase/thread.h"
+#include "sce/iop/vblank/vblank.h"
 
 // OVERLORD module entry point.
 char* gLanguage = "ENG";

@@ -3,7 +3,8 @@ use std::collections::BTreeSet;
 use std::{env, fs};
 
 type Result<T> = std::result::Result<T, String>;
-const USAGE: &str = "Usage: ioplibld -s imports.s object.o... : imports.ilb...";
+const USAGE: &str =
+    "Usage: ioplibld [--source-name filename] -s imports.s object.o... : imports.ilb...";
 const RESERVED: &[&str] = &[
     "_ftext", "etext", "_etext", "_fdata", "edata", "_edata", "_fbss", "end", "_end", "_gp",
 ];
@@ -230,11 +231,25 @@ fn generate(libraries: &[Library], needed: &BTreeSet<String>) -> Result<String> 
     Ok(out)
 }
 
+fn source_directive(name: &str) -> Result<String> {
+    if name.chars().any(char::is_control) {
+        return Err("Source filename must not contain control characters".into());
+    }
+    let name = name.replace('\\', "\\\\").replace('"', "\\\"");
+    Ok(format!(".file 1 \"{name}\"\n"))
+}
+
 fn run(args: &[String]) -> Result<()> {
     if args == ["--help"] {
         println!("{USAGE}");
         return Ok(());
     }
+    let (source_name, args) = if args.first().map(String::as_str) == Some("--source-name") {
+        let name = args.get(1).ok_or(USAGE)?;
+        (Some(name.as_str()), &args[2..])
+    } else {
+        (None, args)
+    };
     let separator = args.iter().position(|a| a == ":").ok_or(USAGE)?;
     if args.first().map(String::as_str) != Some("-s")
         || separator < 3
@@ -254,7 +269,11 @@ fn run(args: &[String]) -> Result<()> {
         let text = fs::read_to_string(path).map_err(|e| format!("{path}: {e}"))?;
         libraries.extend(parse_ilb(&text).map_err(|e| format!("{path}: {e}"))?);
     }
-    let output = generate(&libraries, &symbols.needed())?;
+    let mut output = String::new();
+    if let Some(name) = source_name {
+        output.push_str(&source_directive(name)?);
+    }
+    output.push_str(&generate(&libraries, &symbols.needed())?);
     fs::write(&args[1], output).map_err(|e| format!("{}: {e}", args[1]))
 }
 
@@ -264,3 +283,4 @@ fn main() {
         std::process::exit(1);
     }
 }
+

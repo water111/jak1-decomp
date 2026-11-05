@@ -1,9 +1,15 @@
-//! Convert the IOP linker's ELF32 relocatable output to an unstripped IRX.
-//! Implements the subset of Sony iopfixup 1.11 used by OVERLORD.
+// Convert IOP ELF to IRX.
 use std::{env, fs};
 
 type Result<T> = std::result::Result<T, String>;
-const USAGE: &str = "Usage: iopfixup -r output.irx -e entry input.o";
+const USAGE: &str = "Usage: iopfixup [-s | --strip=minimal-symbols | --strip=empty-sections] -r output.irx -e entry input.o";
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum StripMode {
+    None,
+    MinimalSymbols, // normal stripping
+    EmptySections,  // empty debug sections, not sure how this was done originally.
+}
 const NOBITS: u32 = 8;
 const REL: u32 = 9;
 const MDEBUG: u32 = 0x70000005;
@@ -139,7 +145,7 @@ fn relocate(data: &mut [u8], rels: &[u8], symbols: &[Symbol], address: u32) -> R
             continue;
         }
         if sym.section == u16::MAX {
-            return Err("Relocation refers to removed .reginfo section".into());
+            return Err("Relocation refers to a removed metadata section".into());
         }
         if offset & 3 != 0 {
             return Err("Unaligned relocation".into());
@@ -191,7 +197,7 @@ fn relocate(data: &mut [u8], rels: &[u8], symbols: &[Symbol], address: u32) -> R
     Ok(output)
 }
 
-fn convert(input: &[u8], entry_name: &str) -> Result<Vec<u8>> {
+fn convert(input: &[u8], entry_name: &str, strip: StripMode) -> Result<Vec<u8>> {
     if bytes(input, 0, 7)? != b"\x7fELF\x01\x01\x01"
         || u16_at(input, 16)? != 1
         || u16_at(input, 18)? != 8
@@ -271,10 +277,10 @@ fn convert(input: &[u8], entry_name: &str) -> Result<Vec<u8>> {
     }
     let removed: Vec<_> = sections
         .iter()
-        .filter(|s| s.h[1] == REGINFO)
+        .filter(|s| s.h[1] == REGINFO || (strip == StripMode::MinimalSymbols && s.h[1] == MDEBUG))
         .map(|s| s.original)
         .collect();
-    sections.retain(|s| s.h[1] != REGINFO);
+    sections.retain(|s| !removed.contains(&s.original));
     sections.push(Section {
         name: ".iopmod".into(),
         h: [0, IOPMOD, 0, 0, 0, 27, 0, 0, 4, 0],
@@ -416,23 +422,50 @@ fn convert(input: &[u8], entry_name: &str) -> Result<Vec<u8>> {
         .find(|s| s.name == entry_name && s.info >> 4 != 0 && s.section != 0)
         .ok_or_else(|| format!("Missing entry symbol: {entry_name}"))?
         .value;
-    // OVERLORD does not supply the optional Sony Module descriptor.
-    if symbols
-        .iter()
-        .any(|s| s.name == "Module" && s.info >> 4 != 0 && s.section != 0)
-    {
-        return Err("Module descriptors are not yet supported".into());
-    }
+    // Resolve the optional Module descriptor after applying its name relocation.
     let module = sections.iter().position(|s| s.h[1] == IOPMOD).unwrap();
-    for (i, value) in [u32::MAX, entry, gp, text.size, data.size, bss.size]
+    let mut module_address = u32::MAX;
+    if let Some(descriptor) = symbols
+        .iter()
+        .find(|s| s.name == "Module" && s.info >> 4 != 0 && s.section != 0)
+    {
+        let section = sections
+            .get(descriptor.section as usize)
+            .ok_or("Invalid Module descriptor section")?;
+        let offset = descriptor
+            .value
+            .checked_sub(section.h[3])
+            .ok_or("Invalid Module descriptor address")? as usize;
+        let name_address = u32_at(&section.data, offset)?;
+        let version = u16_at(&section.data, offset + 4)?;
+        let name_section = sections
+            .iter()
+            .find(|s| {
+                s.h[2] & 2 != 0
+                    && name_address >= s.h[3]
+                    && (name_address - s.h[3]) < s.data.len() as u32
+            })
+            .ok_or("Invalid Module name address")?;
+        let name = string(&name_section.data, name_address - name_section.h[3])?;
+        let mut data = vec![0; 26];
+        put16(&mut data, 24, version);
+        data.extend_from_slice(name.as_bytes());
+        data.push(0);
+        sections[module].replace_data(data);
+        module_address = descriptor.value;
+    }
+    for (i, value) in [module_address, entry, gp, text.size, data.size, bss.size]
         .into_iter()
         .enumerate()
     {
         put32(&mut sections[module].data, i * 4, value);
     }
-    // Drop symbols belonging to .reginfo. Relocations have already been resolved.
+    // Drop metadata symbols. Relocations have already been resolved.
     // Section symbols sort first, then other locals, then globals, preserving order.
     symbols.retain(|s| s.section != u16::MAX);
+    if strip != StripMode::None {
+        symbols.truncate(1);
+    }
     symbols[1..].sort_by_key(|s| {
         if s.info >> 4 == 0 {
             if s.info & 15 == 3 {
@@ -458,9 +491,23 @@ fn convert(input: &[u8], entry_name: &str) -> Result<Vec<u8>> {
     sections[stridx].replace_data(strtab);
     sections[symtab].replace_data(symdata);
     sections[symtab].h[7] = symbols.iter().take_while(|s| s.info >> 4 == 0).count() as u32;
+    // 989SND has empty debug/symbol section slots and retains the input
+    // section-name table size after shortening its contents. The SDK tools
+    // tested do not reproduce this layout; its original producer is unknown.
     let mut shnames = vec![0];
     for s in &mut sections {
-        s.h[0] = add_string(&mut shnames, &s.name);
+        if strip == StripMode::EmptySections && s.h[1] == MDEBUG {
+            s.h = [0; 10];
+            s.data.clear();
+            s.h[0] = shnames.len() as u32;
+            shnames.push(0);
+        } else {
+            s.h[0] = add_string(&mut shnames, &s.name);
+        }
+    }
+    if strip == StripMode::EmptySections {
+        sections[symtab].replace_data(Vec::new());
+        sections[stridx].replace_data(Vec::new());
     }
     sections[mapping[shstr]].replace_data(shnames);
 
@@ -494,6 +541,18 @@ fn convert(input: &[u8], entry_name: &str) -> Result<Vec<u8>> {
             place(s, &mut offset)?;
         }
     }
+    if strip == StripMode::EmptySections {
+        for s in &mut sections {
+            if s.name == ".mdebug" {
+                let name_offset = s.h[0];
+                s.h = [0; 10];
+                s.h[0] = name_offset;
+            }
+        }
+        sections[symtab].h = [0; 10];
+        sections[stridx].h = [0; 10];
+        sections[mapping[shstr]].h[5] = names.len() as u32;
+    }
     let mut output = vec![0; offset as usize];
     output[..52].copy_from_slice(bytes(input, 0, 52)?);
     put16(&mut output, 16, 0xff80);
@@ -505,7 +564,20 @@ fn convert(input: &[u8], entry_name: &str) -> Result<Vec<u8>> {
     put16(&mut output, 48, sections.len() as u16);
     put16(&mut output, 50, mapping[shstr] as u16);
     for (i, words) in [
-        [IOPMOD, sections[module].h[4], 0, 0, 28, 0, 4, 4],
+        [
+            IOPMOD,
+            sections[module].h[4],
+            0,
+            0,
+            if module_address == u32::MAX {
+                28
+            } else {
+                sections[module].h[5]
+            },
+            0,
+            4,
+            4,
+        ],
         [
             1,
             sections[text.first].h[4],
@@ -566,8 +638,15 @@ fn place(s: &mut Section, offset: &mut u32) -> Result<()> {
 fn run() -> Result<()> {
     let mut args = env::args().skip(1);
     let (mut output, mut entry, mut input) = (None, None, None);
+    let mut strip = StripMode::None;
     while let Some(arg) = args.next() {
         match arg.as_str() {
+            "-s" | "--strip=minimal-symbols" if strip == StripMode::None => {
+                strip = StripMode::MinimalSymbols;
+            }
+            "--strip=empty-sections" if strip == StripMode::None => {
+                strip = StripMode::EmptySections;
+            }
             "-r" if output.is_none() => output = Some(args.next().ok_or(USAGE)?),
             "-e" if entry.is_none() => entry = Some(args.next().ok_or(USAGE)?),
             _ if !arg.starts_with('-') && input.is_none() => input = Some(arg),
@@ -578,7 +657,7 @@ fn run() -> Result<()> {
         return Err(USAGE.into());
     };
     let data = fs::read(&input).map_err(|e| format!("{input}: {e}"))?;
-    let data = convert(&data, &entry)?;
+    let data = convert(&data, &entry, strip)?;
     fs::write(&output, data).map_err(|e| format!("{output}: {e}"))
 }
 

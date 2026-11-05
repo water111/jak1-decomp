@@ -1,7 +1,9 @@
+#include "sce/iop/thsemap/thsemap.h"
+#include "sce/iop/thmsgbx/thmsgbx.h"
 #include "overlord/iso_queue.h"
 #include "overlord/iso.h"
 #include "overlord/isocommon.h"
-#include "sce/iop/thread.h"
+#include "sce/iop/thbase/thread.h"
 
 // Management of queued commands and their buffers.
 // The queue picks which command is serviced by the disc next.

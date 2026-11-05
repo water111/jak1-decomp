@@ -1,8 +1,9 @@
+#include "sce/iop/thmsgbx/thmsgbx.h"
 #ifndef ISOCOMMON_H
 #define ISOCOMMON_H
 
 #include "common/overlord_rpc.h"
-#include "sce/iop/thread.h"
+#include "sce/iop/thbase/thread.h"
 
 // Streaming disc read buffer sizes
 #define BUFFER_PAGE_SIZE 0xc000

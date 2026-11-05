@@ -1,3 +1,4 @@
+#include "sce/iop/thmsgbx/thmsgbx.h"
 #include "overlord/iso.h"
 #include "989snd/989snd.h"
 #include "common/overlord_rpc.h"
@@ -8,13 +9,13 @@
 #include "overlord/isocommon.h"
 #include "overlord/ssound.h"
 #include "overlord/stream.h"
-#include "sce/iop/intrman.h"
+#include "sce/iop/intrman/intrman.h"
 #include "sce/iop/kerror.h"
-#include "sce/iop/libsd.h"
-#include "sce/iop/loadcore.h"
-#include "sce/iop/sdmacro.h"
-#include "sce/iop/sifrpc.h"
-#include "sce/iop/thread.h"
+#include "sce/iop/libsd/libsd.h"
+#include "sce/iop/loadcore/loadcore.h"
+#include "sce/iop/libsd/sdmacro.h"
+#include "sce/iop/sifcmd/sifrpc.h"
+#include "sce/iop/thbase/thread.h"
 
 // This file contains the main disc I/O logic,
 // and some of the code that handles data off the disc.

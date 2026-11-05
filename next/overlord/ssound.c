@@ -1,11 +1,12 @@
+#include "sce/iop/thsemap/thsemap.h"
 #include "overlord/ssound.h"
 #include "989snd/989snd.h"
 #include "overlord/iso.h"
 #include "overlord/isocommon.h"
 #include "overlord/soundcommon.h"
 #include "overlord/srpc.h"
-#include "sce/iop/stdio.h"
-#include "sce/iop/thread.h"
+#include "sce/iop/stdio/stdio.h"
+#include "sce/iop/thbase/thread.h"
 
 #define SOUND_SLOT_COUNT 64
 #define SOUND_VOLUME_KEEP (-2)

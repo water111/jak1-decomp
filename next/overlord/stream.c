@@ -2,10 +2,10 @@
 #include "overlord/iso_api.h"
 #include "overlord/isocommon.h"
 #include "overlord/overlord.h"
-#include "sce/iop/intrman.h"
-#include "sce/iop/sif.h"
-#include "sce/iop/sifrpc.h"
-#include "sce/iop/thread.h"
+#include "sce/iop/intrman/intrman.h"
+#include "sce/iop/sifman/sif.h"
+#include "sce/iop/sifcmd/sifrpc.h"
+#include "sce/iop/thbase/thread.h"
 
 typedef struct StrFileHeader {
   unsigned int sectors[64];

@@ -4,10 +4,10 @@
 #include "overlord/iso_api.h"
 #include "overlord/isocommon.h"
 #include "overlord/srpc.h"
-#include "sce/iop/intrman.h"
-#include "sce/iop/sifrpc.h"
-#include "sce/iop/sysmem.h"
-#include "sce/iop/thread.h"
+#include "sce/iop/intrman/intrman.h"
+#include "sce/iop/sifcmd/sifrpc.h"
+#include "sce/iop/sysmem/sysmem.h"
+#include "sce/iop/thbase/thread.h"
 
 // Handler for the RAMDISK RPC.
 // The ramdisk loads files from the DVD to IOP RAM and allows

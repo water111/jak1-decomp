@@ -1,3 +1,4 @@
+#include "sce/iop/thsemap/thsemap.h"
 #include "989snd/989snd.h"
 #include "common/overlord_rpc.h"
 #include "overlord/iso.h"
@@ -8,11 +9,11 @@
 #include "overlord/soundcommon.h"
 #include "overlord/ssound.h"
 #include "overlord/ramdisk.h"
-#include "sce/iop/intrman.h"
-#include "sce/iop/sifrpc.h"
-#include "sce/iop/sif.h"
-#include "sce/iop/sysmem.h"
-#include "sce/iop/thread.h"
+#include "sce/iop/intrman/intrman.h"
+#include "sce/iop/sifcmd/sifrpc.h"
+#include "sce/iop/sifman/sif.h"
+#include "sce/iop/sysmem/sysmem.h"
+#include "sce/iop/thbase/thread.h"
 
 // Sound RPC for sound effects and loading.
 

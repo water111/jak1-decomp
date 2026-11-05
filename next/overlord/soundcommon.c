@@ -1,6 +1,6 @@
 #include "overlord/isocommon.h"
-#include "sce/iop/stdio.h"
-#include "sce/iop/string.h"
+#include "sce/iop/stdio/stdio.h"
+#include "sce/iop/sysclib/string.h"
 
 // Development utility to read sound bank definition files and apply updates.
 // likely used for interactive soundbank file editing.

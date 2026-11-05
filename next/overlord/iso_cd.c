@@ -5,9 +5,9 @@
 #include "overlord/ramdisk.h"
 #include "overlord/soundcommon.h"
 #include "overlord/srpc.h"
-#include "sce/iop/libcdvd.h"
-#include "sce/iop/string.h"
-#include "sce/iop/thread.h"
+#include "sce/iop/cdvdman/libcdvd.h"
+#include "sce/iop/sysclib/string.h"
+#include "sce/iop/thbase/thread.h"
 
 // Number of files on disc.
 static int sNumFiles = 0;

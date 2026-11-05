@@ -1,7 +1,7 @@
-#include "sce/iop/sif.h"
-#include "sce/iop/thread.h"
-#include "sce/iop/intrman.h"
-#include "sce/iop/libsd.h"
+#include "sce/iop/sifman/sif.h"
+#include "sce/iop/thbase/thread.h"
+#include "sce/iop/intrman/intrman.h"
+#include "sce/iop/libsd/libsd.h"
 #include "989snd/989snd.h"
 
 static unsigned int dmaid = 0;

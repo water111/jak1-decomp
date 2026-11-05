@@ -2,7 +2,7 @@ use std::collections::BTreeSet;
 use std::{env, fs};
 
 type Result<T> = std::result::Result<T, String>;
-const USAGE: &str = "Usage: ioplibgen -d library.ilb library.tbl";
+const USAGE: &str = "Usage: ioplibgen <-d library.ilb | -e exports.s> library.tbl";
 
 fn identifier(name: &str) -> bool {
     let mut chars = name.bytes();
@@ -12,7 +12,7 @@ fn identifier(name: &str) -> bool {
         && chars.all(|c| c.is_ascii_alphanumeric() || b"_.$".contains(&c))
 }
 
-fn generate(source: &str) -> Result<String> {
+fn generate(source: &str, exports: bool) -> Result<String> {
     let mut name = None;
     let mut version = None;
     let mut flags = None;
@@ -61,14 +61,18 @@ fn generate(source: &str) -> Result<String> {
                 };
                 flags = Some(parsed.map_err(|_| error("Invalid 16-bit Flags value"))?);
             }
-            ["Entry", symbol] => {
+            ["Entry", symbol] | ["Entry", symbol, "=", _] => {
                 if entries.len() == 65536 {
                     return Err(error("Entry ordinal exceeds 65535"));
                 }
                 if *symbol != "-" && (!identifier(symbol) || !symbols.insert(*symbol)) {
                     return Err(error("Invalid or duplicate entry name"));
                 }
-                entries.push(*symbol);
+                let target = if fields.len() == 4 { fields[3] } else { symbol };
+                if target != "-" && !identifier(target) {
+                    return Err(error("Invalid export target"));
+                }
+                entries.push((*symbol, target));
             }
             _ => {
                 return Err(error(
@@ -82,11 +86,28 @@ fn generate(source: &str) -> Result<String> {
     if entries.len() < 4 {
         return Err("At least four Entry slots are required (ordinals 0–3)".into());
     }
+    if exports {
+        let mut output = format!(
+            "\t.text\n\t.set noreorder\n\t.align 2\n\t.globl {name}_stub\n{name}_stub:\n\t.word 0x41c00000, 0\n\t.short 0x{version:04x}, 0x{:04x}\n\t.ascii \"{name}{}\"\n",
+            flags.unwrap_or(0),
+            "\\0".repeat(8 - name.len())
+        );
+        for (_, target) in &entries {
+            let target = if *target == "-" {
+                "_export_return"
+            } else {
+                target
+            };
+            output.push_str(&format!("\t.word {target}\n"));
+        }
+        output.push_str("\t.word 0\n_export_return:\n\tjr $31\n\tnop\n");
+        return Ok(output);
+    }
     let mut output = format!(
         "#IOP-ILB# $Id$\nL {name}\nV 0x{version:04x}\nF 0x{:04x}\n",
         flags.unwrap_or(0)
     );
-    for (ordinal, symbol) in entries.iter().enumerate() {
+    for (ordinal, (symbol, _)) in entries.iter().enumerate() {
         if *symbol != "-" {
             output.push_str(&format!("E {ordinal:03} {symbol}\n"));
         }
@@ -102,11 +123,11 @@ fn run(args: &[String]) -> Result<()> {
     let [option, output, input] = args else {
         return Err(USAGE.into());
     };
-    if option != "-d" {
+    if option != "-d" && option != "-e" {
         return Err(USAGE.into());
     }
     let source = fs::read_to_string(input).map_err(|e| format!("{input}: {e}"))?;
-    let ilb = generate(&source).map_err(|e| format!("{input}: {e}"))?;
+    let ilb = generate(&source, option == "-e").map_err(|e| format!("{input}: {e}"))?;
     fs::write(output, ilb).map_err(|e| format!("{output}: {e}"))
 }
 
@@ -116,4 +137,3 @@ fn main() {
         std::process::exit(1);
     }
 }
-

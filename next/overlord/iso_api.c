@@ -1,9 +1,10 @@
+#include "sce/iop/thmsgbx/thmsgbx.h"
 #include "overlord/iso.h"
 #include "overlord/iso_queue.h"
 #include "overlord/isocommon.h"
 #include "overlord/srpc.h"
-#include "sce/iop/thread.h"
-#include "sce/iop/string.h"
+#include "sce/iop/thbase/thread.h"
+#include "sce/iop/sysclib/string.h"
 
 #ifdef ISO_API_EMBEDDED
 #line 1076 "iso.c"
