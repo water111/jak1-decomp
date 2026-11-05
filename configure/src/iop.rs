@@ -107,6 +107,33 @@ pub(super) const SIO2MAN_2_4: IopBuild = IopBuild {
     ..DEFAULT_BUILD
 };
 
+pub(super) const MCSERV_2_12: IopBuild = IopBuild {
+    output_dir: "sce/iop/mcserv",
+    filename: "MCSERV.IRX",
+    version: "2.12",
+    sha256: "65157cc7bc2388372c244f65af5094354494794b7ac9bc0ba2242126f51c25e6",
+    source_dir: "sce/iop/mcserv",
+    sources: &["mcserv.c"],
+    imports: &[
+        "sce/iop/loadcore/loadcore.tbl",
+        "sce/iop/intrman/intrman.tbl",
+        "sce/iop/sysclib/sysclib.tbl",
+        "sce/iop/stdio/stdio.tbl",
+        "sce/iop/sifman/sifman.tbl",
+        "sce/iop/sifcmd/sifcmd.tbl",
+        "sce/iop/thbase/thbase.tbl",
+        "sce/iop/thsemap/thsemap.tbl",
+        "sce/iop/mcman/mcman.tbl",
+    ],
+    assembler_debug: true,
+    exports: Some(ExportTable {
+        table: "mcserv.tbl",
+        object: "exports",
+        position: ExportPosition::First,
+    }),
+    ..DEFAULT_BUILD
+};
+
 const OVERLORD_SOURCES: &[&str] = &[
     "ramdisk.c",
     "fakeiso.c",

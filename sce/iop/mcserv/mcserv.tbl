@@ -1,0 +1,12 @@
+Libname mcserv
+Version 2.1
+Flags 0
+
+Entry - # 000
+Entry - # 001
+Entry - # 002
+Entry - # 003
+Entry - # 004
+Entry mcserv_change_priority # 005
+Entry - # 006
+Entry - # 007
