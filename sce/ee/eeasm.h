@@ -16,4 +16,6 @@
 
 #define EE_SYNC_L() __asm__ volatile("sync.l")
 
+#define EE_ENABLE_INTERRUPTS() __asm__ volatile("sync\nei")
+
 #endif

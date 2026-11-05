@@ -30,4 +30,25 @@ long VSync2(void);
 
 void SyncDCache(void* start, void* end);
 
+typedef struct {
+  int status;
+  void (*entry)(void);
+  void* stack;
+  int stack_size;
+  void* gp;
+  int priority, current_priority;
+  unsigned attributes, option;
+  int wait_type, wait_id, wakeups;
+} Thread;
+
+int DeleteSema(int id);
+int iSignalSema(int id);
+int DIntr(void);
+int EIntr(void);
+int ExitDeleteThread(void);
+int ReferThreadStatus(int id, Thread* thread);
+int CreateThread(Thread* thread);
+int StartThread(int id, void* argument);
+int ChangeThreadPriority(int id, int priority);
+
 #endif

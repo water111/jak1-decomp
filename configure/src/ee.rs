@@ -11,6 +11,7 @@ pub(super) struct EeBuild {
     pub source_dir: &'static str,
     pub output_dir: &'static str,
     pub defines: &'static [&'static str],
+    pub compiler_flags: &'static str,
     pub compile_dir: &'static str,
     pub small_data: u8,
     pub filename: &'static str,
@@ -22,6 +23,7 @@ pub(super) const LIBDMA: EeBuild = EeBuild {
     source_dir: "sce/ee/libdma",
     output_dir: "sce/ee/libdma",
     defines: &[],
+    compiler_flags: "",
     compile_dir: "",
     small_data: 0,
     filename: "libdma.a",
@@ -50,6 +52,7 @@ pub(super) const LIBSCF: EeBuild = EeBuild {
     source_dir: "sce/ee/libscf",
     output_dir: "sce/ee/libscf",
     defines: &[],
+    compiler_flags: "",
     compile_dir: "",
     small_data: 0,
     filename: "libscf.a",
@@ -88,6 +91,7 @@ pub(super) const LIBMC: EeBuild = EeBuild {
         "__SIZE_TYPE__=unsigned int",
         "__PTRDIFF_TYPE__=int",
     ],
+    compiler_flags: "",
     compile_dir: "build",
     small_data: 0,
     filename: "libmc.a",
@@ -98,6 +102,47 @@ pub(super) const LIBMC: EeBuild = EeBuild {
     }],
     headers: &[
         "sce/ee/libmc/libmc.h",
+        "sce/ee/libkernl/eekernel.h",
+        "sce/ee/libkernl/sif.h",
+        "sce/ee/newlib/string.h",
+        "sce/ee/newlib/stdio.h",
+        "sce/ee/newlib/_ansi.h",
+        "sce/ee/newlib/sys/config.h",
+        "sce/ee/newlib/sys/reent.h",
+        "sce/ee/newlib/time.h",
+        "sce/ee/newlib/machine/time.h",
+        "sce/ee/newlib/machine/types.h",
+        "sce/ee/newlib/stddef.h",
+        "sce/ee/newlib/stdarg.h",
+        "sce/ee/newlib/va-mips.h",
+    ],
+};
+
+pub(super) const LIBCDVD: EeBuild = EeBuild {
+    source_dir: "sce/ee/libcdvd",
+    output_dir: "sce/ee/libcdvd",
+    defines: &[
+        "__mips__",
+        "__mips64",
+        "__mips_eabi",
+        "__mips_single_float",
+        "__SIZE_TYPE__=unsigned int",
+        "__PTRDIFF_TYPE__=int",
+    ],
+    compiler_flags: "-fno-strict-aliasing",
+    compile_dir: "build",
+    small_data: 0,
+    filename: "libcdvd.a",
+    sources: &[EeObject {
+        source: "eecdvd.c",
+        name: "eecdvd",
+        defines: &[],
+    }],
+    headers: &[
+        "sce/ee/libcdvd/libcdvd.h",
+        "sce/common/libcdvd/rpc.h",
+        "sce/ee/memory.h",
+        "sce/ee/eeasm.h",
         "sce/ee/libkernl/eekernel.h",
         "sce/ee/libkernl/sif.h",
         "sce/ee/newlib/string.h",
@@ -125,6 +170,7 @@ pub(super) const LIBPAD: EeBuild = EeBuild {
         "__SIZE_TYPE__=unsigned int",
         "__PTRDIFF_TYPE__=int",
     ],
+    compiler_flags: "",
     compile_dir: "",
     small_data: 0,
     filename: "libpad.a",
@@ -156,6 +202,7 @@ pub(super) const LIBSCEDEMO: EeBuild = EeBuild {
     source_dir: "sce/ee/libscedemo",
     output_dir: "sce/ee/libscedemo",
     defines: &[],
+    compiler_flags: "",
     compile_dir: "",
     small_data: 8,
     filename: "libscedemo.a",
@@ -238,6 +285,7 @@ pub(super) const LIBGRAPH: EeBuild = EeBuild {
     source_dir: "sce/ee/libgraph",
     output_dir: "sce/ee/libgraph",
     defines: &[],
+    compiler_flags: "",
     compile_dir: "",
     small_data: 0,
     filename: "libgraph.a",
@@ -288,7 +336,7 @@ rule ee_preprocess
   command = cd "$source_dir" && "$ee_tool_dir/cpp" -nostdinc -I"$repo_root" $defines "$source_name" "$build_dir/$out"
   description = EE CPP $out
 rule ee_compile
-  command = cd "$build_dir/$source_workdir" && "$ee_tool_dir/cc1" -quiet -O2 -G $small_data "$source_name" -o "$build_dir/$out"
+  command = cd "$build_dir/$source_workdir" && "$ee_tool_dir/cc1" -quiet -O2 $compiler_flags -G $small_data "$source_name" -o "$build_dir/$out"
   description = EE CC $out
 rule ee_assemble
   command = "$ee_tool_dir/ee-as" -G $small_data -mabi=eabi -o "$out" "$in"
@@ -349,12 +397,14 @@ rule ee_archive
   source_dir = $build_dir/{preprocess_dir}
   source_name = {compile_name}
 build {assembly}: ee_compile {preprocessed} | $ee_tool_dir/cc1
+  compiler_flags = {compiler_flags}
   small_data = {small_data}
   source_workdir = {source_workdir}
   source_name = {compile_name}
 build {object}: ee_assemble {assembly} | $ee_tool_dir/ee-as
   small_data = {small_data}
 ",
+                compiler_flags = build.compiler_flags,
                 small_data = build.small_data,
                 preprocessed = preprocessed.display(),
                 source_dir = source_dir.display(),

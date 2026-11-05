@@ -43,4 +43,7 @@ int sceSifCheckStatRpc(SifRpcClient* client);
 
 int sceSifDmaStat(unsigned id);
 
+void sceSifRemoveCmdHandler(int command);
+void sceSifAddCmdHandler(int command, void (*handler)(void*, void*), void* argument);
+
 #endif

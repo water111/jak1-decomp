@@ -9,6 +9,18 @@ pub struct SymbolId(pub u64);
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub struct ConsId(pub u32);
 
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub struct ProcedureId(pub u32);
+
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub struct EnvironmentId(pub u32);
+
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub struct StringHashTableId(pub u32);
+
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub struct BuiltinId(pub u16);
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct Object {
     pub span: Option<SpanInfo>,
@@ -23,6 +35,11 @@ pub enum Value {
     Float(f64),
     Integer(i64),
     Array(Vec<Object>),
+    Lambda(ProcedureId),
+    Macro(ProcedureId),
+    Environment(EnvironmentId),
+    StringHashTable(StringHashTableId),
+    Builtin(BuiltinId),
     EmptyList,
 }
 
@@ -57,6 +74,26 @@ impl Object {
 
     pub fn pair(value: ConsId, span: Option<SpanInfo>) -> Self {
         Self::new(Value::Pair(value), span)
+    }
+
+    pub fn lambda(value: ProcedureId, span: Option<SpanInfo>) -> Self {
+        Self::new(Value::Lambda(value), span)
+    }
+
+    pub fn macro_object(value: ProcedureId, span: Option<SpanInfo>) -> Self {
+        Self::new(Value::Macro(value), span)
+    }
+
+    pub fn environment(value: EnvironmentId, span: Option<SpanInfo>) -> Self {
+        Self::new(Value::Environment(value), span)
+    }
+
+    pub fn string_hash_table(value: StringHashTableId, span: Option<SpanInfo>) -> Self {
+        Self::new(Value::StringHashTable(value), span)
+    }
+
+    pub fn builtin(value: BuiltinId, span: Option<SpanInfo>) -> Self {
+        Self::new(Value::Builtin(value), span)
     }
 }
 
@@ -282,6 +319,11 @@ fn enqueue_pairs(object: &Object, pending: &mut Vec<ConsId>) {
         | Value::Symbol(_)
         | Value::Float(_)
         | Value::Integer(_)
+        | Value::Lambda(_)
+        | Value::Macro(_)
+        | Value::Environment(_)
+        | Value::StringHashTable(_)
+        | Value::Builtin(_)
         | Value::EmptyList => {}
     }
 }
