@@ -3,6 +3,8 @@
 
 // Interrupt manager
 
+#define IOP_IRQ_SIO2 17
+
 extern int CpuDisableIntr();
 extern int CpuEnableIntr();
 

@@ -1,0 +1,15 @@
+Libname thevent
+Version 1.1
+Flags 0x0000
+
+Entry -	# 000
+Entry -	# 001
+Entry -	# 002
+Entry -	# 003
+Entry CreateEventFlag	# 004
+Entry DeleteEventFlag	# 005
+Entry SetEventFlag	# 006
+Entry iSetEventFlag	# 007
+Entry ClearEventFlag	# 008
+Entry iClearEventFlag	# 009
+Entry WaitEventFlag	# 010

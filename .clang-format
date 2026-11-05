@@ -2,3 +2,4 @@ BasedOnStyle: Chromium
 AllowShortEnumsOnASingleLine: false
 AllowShortFunctionsOnASingleLine: None
 ColumnLimit: 100
+SeparateDefinitionBlocks: Always

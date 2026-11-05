@@ -82,6 +82,31 @@ const DEFAULT_BUILD: IopBuild = IopBuild {
     debug_import_source: None,
 };
 
+pub(super) const SIO2MAN_2_4: IopBuild = IopBuild {
+    output_dir: "sce/iop/sio2man",
+    filename: "SIO2MAN.IRX",
+    version: "2.4",
+    sha256: "4e12becc4fe5c6e9cf082417ed70eb7b9b521ed9ee122f73ef2b1478f06494d6",
+    source_dir: "sce/iop/sio2man",
+    sources: &["sio2man.c"],
+    imports: &[
+        "sce/iop/loadcore/loadcore.tbl",
+        "sce/iop/intrman/intrman.tbl",
+        "sce/iop/stdio/stdio.tbl",
+        "sce/iop/dmacman/dmacman.tbl",
+        "sce/iop/thbase/thbase.tbl",
+        "sce/iop/thevent/thevent.tbl",
+        "sce/iop/sysclib/sysclib.tbl",
+    ],
+    assembler_debug: true, // needed for delay slot scheduling to match.
+    exports: Some(ExportTable {
+        table: "sio2man.tbl",
+        object: "exports",
+        position: ExportPosition::Last,
+    }),
+    ..DEFAULT_BUILD
+};
+
 const OVERLORD_SOURCES: &[&str] = &[
     "ramdisk.c",
     "fakeiso.c",
