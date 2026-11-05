@@ -1,0 +1,29 @@
+Libname timrman
+Version 1.2
+Flags 0x0000
+
+Entry -	# 000
+Entry -	# 001
+Entry -	# 002
+Entry -	# 003
+Entry AllocHardTimer	# 004
+Entry -	# 005
+Entry FreeHardTimer	# 006
+Entry -	# 007
+Entry -	# 008
+Entry -	# 009
+Entry -	# 010
+Entry -	# 011
+Entry -	# 012
+Entry -	# 013
+Entry -	# 014
+Entry -	# 015
+Entry -	# 016
+Entry -	# 017
+Entry -	# 018
+Entry -	# 019
+Entry SetTimerHandler	# 020
+Entry -	# 021
+Entry SetupHardTimer	# 022
+Entry StartHardTimer	# 023
+Entry StopHardTimer	# 024

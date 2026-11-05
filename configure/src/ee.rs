@@ -114,6 +114,44 @@ pub(super) const LIBMC: EeBuild = EeBuild {
     ],
 };
 
+pub(super) const LIBPAD: EeBuild = EeBuild {
+    source_dir: "sce/ee/libpad",
+    output_dir: "sce/ee/libpad",
+    defines: &[
+        "__mips__",
+        "__mips64",
+        "__mips_eabi",
+        "__mips_single_float",
+        "__SIZE_TYPE__=unsigned int",
+        "__PTRDIFF_TYPE__=int",
+    ],
+    compile_dir: "",
+    small_data: 0,
+    filename: "libpad.a",
+    sources: &[EeObject {
+        source: "libpad.c",
+        name: "libpad",
+        defines: &["PAD_OPEN_ASM"],
+    }],
+    headers: &[
+        "sce/ee/libpad/libpad.h",
+        "sce/ee/libpad/port-open.inc",
+        "sce/ee/libkernl/eekernel.h",
+        "sce/ee/libkernl/sif.h",
+        "sce/ee/newlib/string.h",
+        "sce/ee/newlib/stdio.h",
+        "sce/ee/newlib/_ansi.h",
+        "sce/ee/newlib/sys/config.h",
+        "sce/ee/newlib/sys/reent.h",
+        "sce/ee/newlib/time.h",
+        "sce/ee/newlib/machine/time.h",
+        "sce/ee/newlib/machine/types.h",
+        "sce/ee/newlib/stddef.h",
+        "sce/ee/newlib/stdarg.h",
+        "sce/ee/newlib/va-mips.h",
+    ],
+};
+
 pub(super) const LIBSCEDEMO: EeBuild = EeBuild {
     source_dir: "sce/ee/libscedemo",
     output_dir: "sce/ee/libscedemo",

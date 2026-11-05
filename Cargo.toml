@@ -1,3 +1,3 @@
 [workspace]
-members = ["configure", "ioplibld", "ioplibgen", "iopfixup"]
+members = ["configure", "goal", "ioplibld", "ioplibgen", "iopfixup"]
 resolver = "3"

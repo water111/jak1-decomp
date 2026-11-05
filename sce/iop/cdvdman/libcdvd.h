@@ -45,4 +45,26 @@ typedef struct {
 
 int _sceCdRC(sceCdCLOCK* clock);
 
+enum SceCdError {
+  SCECdErFAIL = -1,
+  SCECdErNO = 0,
+  SCECdErEOM = 50,
+  SCECdErTRMOPN = 49,
+  SCECdErREAD = 48,
+  SCECdErPRM = 34,
+  SCECdErILI = 33,
+  SCECdErIPI = 32,
+  SCECdErCUD = 20,
+  SCECdErNORDY = 19,
+  SCECdErNODISC = 18,
+  SCECdErOPENS = 17,
+  SCECdErCMD = 16,
+  SCECdErABRT = 1,
+};
+
+int sceCdPause(void);
+int sceCdStop(void);
+typedef void (*SceCdCallback)(int reason);
+SceCdCallback sceCdCallback(SceCdCallback callback);
+
 #endif

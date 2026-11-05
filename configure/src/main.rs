@@ -18,7 +18,7 @@ const REVISIONS: &[Revision] = &[
     Revision {
         name: "jak1/20010903/ntsc/us",
         description: "NTSC September Preview",
-        ee_builds: &[ee::LIBGRAPH_EARLY, ee::LIBMC, ee::LIBDMA],
+        ee_builds: &[ee::LIBPAD, ee::LIBGRAPH_EARLY, ee::LIBMC, ee::LIBDMA],
         iop_builds: &[
             iop::OVERLORD_20010903,
             iop::SIO2MAN_2_4,
@@ -27,13 +27,14 @@ const REVISIONS: &[Revision] = &[
             iop::USBD_2_4,
             iop::PADMAN_4_2,
             iop::MCMAN_2_21,
+            iop::SND989_2_6_4,
             iop::IOPSETUP,
         ],
     },
     Revision {
         name: "jak1/20010920/ntsc/jp",
         description: "NTSC Japanese Demo",
-        ee_builds: &[ee::LIBGRAPH, ee::LIBMC, ee::LIBDMA, ee::LIBSCF],
+        ee_builds: &[ee::LIBPAD, ee::LIBGRAPH, ee::LIBMC, ee::LIBDMA, ee::LIBSCF],
         iop_builds: &[
             iop::OVERLORD_20010920,
             iop::SIO2MAN_2_4,
@@ -42,12 +43,14 @@ const REVISIONS: &[Revision] = &[
             iop::USBD_2_4,
             iop::PADMAN_4_2,
             iop::MCMAN_2_21,
+            iop::SND989_2_6_4,
         ],
     },
     Revision {
         name: "jak1/20011002/ntsc/us",
         description: "NTSC Cingular Demo",
         ee_builds: &[
+            ee::LIBPAD,
             ee::LIBGRAPH,
             ee::LIBMC,
             ee::LIBDMA,
@@ -62,12 +65,13 @@ const REVISIONS: &[Revision] = &[
             iop::USBD_2_4,
             iop::PADMAN_4_2,
             iop::MCMAN_2_21,
+            iop::SND989_2_6_4,
         ],
     },
     Revision {
         name: "jak1/20011019/ntsc/us",
         description: "NTSC October Prototype",
-        ee_builds: &[ee::LIBGRAPH, ee::LIBMC, ee::LIBDMA, ee::LIBSCF],
+        ee_builds: &[ee::LIBPAD, ee::LIBGRAPH, ee::LIBMC, ee::LIBDMA, ee::LIBSCF],
         iop_builds: &[
             iop::OVERLORD_20011019,
             iop::SIO2MAN_2_4,
@@ -76,13 +80,14 @@ const REVISIONS: &[Revision] = &[
             iop::USBD_2_4,
             iop::PADMAN_4_2,
             iop::MCMAN_2_21,
+            iop::SND989_2_6_8,
             iop::IOPSETUP,
         ],
     },
     Revision {
         name: "jak1/20011031/ntsc/us",
         description: "NTSC Retail",
-        ee_builds: &[ee::LIBGRAPH, ee::LIBMC, ee::LIBDMA, ee::LIBSCF],
+        ee_builds: &[ee::LIBPAD, ee::LIBGRAPH, ee::LIBMC, ee::LIBDMA, ee::LIBSCF],
         iop_builds: &[
             iop::OVERLORD_20011031,
             iop::SIO2MAN_2_4,
@@ -91,12 +96,14 @@ const REVISIONS: &[Revision] = &[
             iop::USBD_2_4,
             iop::PADMAN_4_2,
             iop::MCMAN_2_21,
+            iop::SND989_2_6_8,
         ],
     },
     Revision {
         name: "jak1/20011102/pal/eu",
         description: "PAL OPS2M Demo",
         ee_builds: &[
+            ee::LIBPAD,
             ee::LIBGRAPH,
             ee::LIBMC,
             ee::LIBDMA,
@@ -111,12 +118,13 @@ const REVISIONS: &[Revision] = &[
             iop::USBD_2_4,
             iop::PADMAN_4_2,
             iop::MCMAN_2_21,
+            iop::SND989_2_6_8,
         ],
     },
     Revision {
         name: "jak1/20011104/pal/eu",
         description: "PAL Retail",
-        ee_builds: &[ee::LIBGRAPH, ee::LIBMC, ee::LIBDMA, ee::LIBSCF],
+        ee_builds: &[ee::LIBPAD, ee::LIBGRAPH, ee::LIBMC, ee::LIBDMA, ee::LIBSCF],
         iop_builds: &[
             iop::OVERLORD_20011104,
             iop::SIO2MAN_2_4,
@@ -125,12 +133,13 @@ const REVISIONS: &[Revision] = &[
             iop::USBD_2_4,
             iop::PADMAN_4_2,
             iop::MCMAN_2_21,
+            iop::SND989_2_6_8,
         ],
     },
     Revision {
         name: "jak1/20011111/pal/eu",
         description: "PAL Demo",
-        ee_builds: &[ee::LIBGRAPH, ee::LIBMC, ee::LIBDMA, ee::LIBSCF],
+        ee_builds: &[ee::LIBPAD, ee::LIBGRAPH, ee::LIBMC, ee::LIBDMA, ee::LIBSCF],
         iop_builds: &[
             iop::OVERLORD_20011111,
             iop::SIO2MAN_2_4,
@@ -139,12 +148,13 @@ const REVISIONS: &[Revision] = &[
             iop::USBD_2_4,
             iop::PADMAN_4_2,
             iop::MCMAN_2_21,
+            iop::SND989_2_6_8,
         ],
     },
     Revision {
         name: "jak1/20011121/ntsc/jp",
         description: "NTSC Japanese Retail",
-        ee_builds: &[ee::LIBGRAPH, ee::LIBMC, ee::LIBDMA, ee::LIBSCF],
+        ee_builds: &[ee::LIBPAD, ee::LIBGRAPH, ee::LIBMC, ee::LIBDMA, ee::LIBSCF],
         iop_builds: &[
             iop::OVERLORD_20011121,
             iop::SIO2MAN_2_4,
@@ -153,12 +163,13 @@ const REVISIONS: &[Revision] = &[
             iop::USBD_2_4,
             iop::PADMAN_4_2,
             iop::MCMAN_2_21,
+            iop::SND989_2_6_8,
         ],
     },
     Revision {
         name: "jak1/20011127/ntsc/us",
         description: "NTSC Greatest Hits",
-        ee_builds: &[ee::LIBGRAPH, ee::LIBMC, ee::LIBDMA, ee::LIBSCF],
+        ee_builds: &[ee::LIBPAD, ee::LIBGRAPH, ee::LIBMC, ee::LIBDMA, ee::LIBSCF],
         iop_builds: &[
             iop::OVERLORD_20011121,
             iop::SIO2MAN_2_4,
@@ -167,12 +178,13 @@ const REVISIONS: &[Revision] = &[
             iop::USBD_2_4,
             iop::PADMAN_4_2,
             iop::MCMAN_2_21,
+            iop::SND989_2_6_8,
         ],
     },
     Revision {
         name: "jak1/20020121/ntsc/kr",
         description: "NTSC Korean Retail",
-        ee_builds: &[ee::LIBGRAPH, ee::LIBMC, ee::LIBDMA, ee::LIBSCF],
+        ee_builds: &[ee::LIBPAD, ee::LIBGRAPH, ee::LIBMC, ee::LIBDMA, ee::LIBSCF],
         iop_builds: &[
             iop::OVERLORD_20011031,
             iop::SIO2MAN_2_4,
@@ -181,6 +193,7 @@ const REVISIONS: &[Revision] = &[
             iop::USBD_2_4,
             iop::PADMAN_4_2,
             iop::MCMAN_2_21,
+            iop::SND989_2_6_8,
         ],
     },
 ];

@@ -41,4 +41,6 @@ sceSifCallRpc(SifRpcClient*, unsigned, unsigned, void*, int, void*, int, void (*
 
 int sceSifCheckStatRpc(SifRpcClient* client);
 
+int sceSifDmaStat(unsigned id);
+
 #endif

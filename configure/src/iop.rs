@@ -317,6 +317,96 @@ pub(super) const MCMAN_2_21: IopBuild = IopBuild {
     ..DEFAULT_BUILD
 };
 
+pub(super) const SND989_2_6_8: IopBuild = IopBuild {
+    output_dir: "sce/iop/989snd",
+    filename: "989SND.IRX",
+    version: "2.6.8",
+    sha256: "fc81724f7b62062e786c9e461a707342c0c9186580526e3802f91834bfd0e48d",
+    source_dir: "sce/iop/989snd",
+    sources: &[
+        "frontend.c",
+        "valloc.c",
+        "loader.c",
+        "init.c",
+        "sram.c",
+        "tick.c",
+        "playback.c",
+        "handlers.c",
+        "stream_sound.c",
+        "volume.c",
+        "pantable.c",
+        "reverb.c",
+        "midi.c",
+        "ame.c",
+        "autovol.c",
+        "autopan.c",
+        "autopitch.c",
+        "stream.c",
+        "autopitchbend.c",
+        "movie_control.c",
+        "exports.c",
+        "autoverb.c",
+        "block.c",
+        "random.c",
+        "lfo.c",
+        "interrupts.c",
+        "state.c",
+        "small_state.s",
+    ],
+    imports: &[
+        "sce/iop/libsd/libsd.tbl",
+        "sce/iop/cdvdman/cdvdman.tbl",
+        "sce/iop/sysmem/sysmem.tbl",
+        "sce/iop/intrman/intrman.tbl",
+        "sce/iop/ioman/ioman.tbl",
+        "sce/iop/989snd/imports/loadcore.tbl",
+        "sce/iop/sifcmd/sifcmd.tbl",
+        "sce/iop/sifman/sifman.tbl",
+        "sce/iop/989snd/imports/stdio.tbl",
+        "sce/iop/989snd/imports/sysclib.tbl",
+        "sce/iop/thbase/thbase.tbl",
+        "sce/iop/thsemap/thsemap.tbl",
+        "sce/iop/xtimrman/xtimrman.tbl",
+    ],
+    exports: Some(ExportTable {
+        table: "989snd-2.6.8.tbl",
+        object: "export_table",
+        position: ExportPosition::Before("exports.o"),
+    }),
+    entry: "_start",
+    strip: StripMode::EmptySections,
+    defines: &["SND989_VERSION=0x020608"],
+    ..DEFAULT_BUILD
+};
+
+pub(super) const SND989_2_6_4: IopBuild = IopBuild {
+    version: "2.6.4",
+    sha256: "c1c856244d8cecee2ffa5be4d0317456d36fff766dd731d1a6de2efef31ffcab",
+    defines: &["SND989_VERSION=0x020604"],
+    // The -finline-function options changes the layout of functions significantly.
+    optimization: "-O2 -finline-functions",
+    imports: &[
+        "sce/iop/libsd/libsd.tbl",
+        "sce/iop/cdvdman/cdvdman.tbl",
+        "sce/iop/sysmem/sysmem.tbl",
+        "sce/iop/intrman/intrman.tbl",
+        "sce/iop/989snd/imports/loadcore.tbl",
+        "sce/iop/sifcmd/sifcmd.tbl",
+        "sce/iop/sifman/sifman.tbl",
+        "sce/iop/989snd/imports/stdio.tbl",
+        "sce/iop/989snd/imports/sysclib.tbl",
+        "sce/iop/thbase/thbase.tbl",
+        "sce/iop/thsemap/thsemap.tbl",
+        "sce/iop/xtimrman/xtimrman.tbl",
+    ],
+    exports: Some(ExportTable {
+        table: "989snd-2.6.4.tbl",
+        object: "export_table",
+        position: ExportPosition::Before("exports.o"),
+    }),
+    ..SND989_2_6_8
+};
+
 const OVERLORD_SOURCES: &[&str] = &[
     "ramdisk.c",
     "fakeiso.c",

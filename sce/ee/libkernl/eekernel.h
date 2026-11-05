@@ -28,4 +28,6 @@ void SetGsCrt(short inter, short output, short frame);
 void VSync(void);
 long VSync2(void);
 
+void SyncDCache(void* start, void* end);
+
 #endif
