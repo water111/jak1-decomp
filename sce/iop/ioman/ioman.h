@@ -10,4 +10,15 @@ int open(const char* name, int flags, ...);
 int read(int descriptor, void* buffer, size_t count);
 int close(int descriptor);
 int lseek(int descriptor, int offset, int origin);
+
+struct IopDevice {
+  const char* name;
+  u_int type, version;
+  const char* description;
+  void* operations;
+};
+
+int AddDrv(struct IopDevice* driver);
+int DelDrv(const char* name);
+
 #endif

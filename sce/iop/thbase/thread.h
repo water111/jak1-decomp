@@ -50,7 +50,10 @@ struct ThreadInfo {
   void* context;
   int reserved[4];
 };
+
 int ReferThreadStatus(int id, struct ThreadInfo* info);
 int ChangeThreadPriority(int id, int priority);
+
+int SetAlarm(struct SysClock* clock, unsigned int (*callback)(void*), void* argument);
 
 #endif

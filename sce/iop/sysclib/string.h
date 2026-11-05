@@ -14,4 +14,9 @@ void* memset(void* dest, int value, size_t size);
 
 void* memcpy(void* dest, const void* src, size_t size);
 
+int strcmp(const char* left, const char* right);
+char* strcpy(char* destination, const char* source);
+char* strncpy(char* destination, const char* source, size_t count);
+size_t strlen(const char* text);
+
 #endif

@@ -20,4 +20,12 @@ int iWakeupThread(int id);
 int SetAlarm(unsigned short time, void (*callback)(int, unsigned short, int), int argument);
 void FlushCache(int operation);
 
+unsigned long GsPutIMR(unsigned long mask);
+unsigned long GsGetIMR(void);
+int DisableIntc(int cause);
+int RemoveIntcHandler(int cause, int handler);
+void SetGsCrt(short inter, short output, short frame);
+void VSync(void);
+long VSync2(void);
+
 #endif

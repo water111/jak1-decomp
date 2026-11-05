@@ -1,5 +1,12 @@
 use std::{fs, io, path::Path};
 
+#[derive(Clone, Copy)]
+pub(super) struct EeObject {
+    pub source: &'static str,
+    pub name: &'static str,
+    pub defines: &'static [&'static str],
+}
+
 pub(super) struct EeBuild {
     pub source_dir: &'static str,
     pub output_dir: &'static str,
@@ -7,7 +14,7 @@ pub(super) struct EeBuild {
     pub compile_dir: &'static str,
     pub small_data: u8,
     pub filename: &'static str,
-    pub sources: &'static [&'static str],
+    pub sources: &'static [EeObject],
     pub headers: &'static [&'static str],
 }
 
@@ -18,7 +25,11 @@ pub(super) const LIBDMA: EeBuild = EeBuild {
     compile_dir: "",
     small_data: 0,
     filename: "libdma.a",
-    sources: &["libdma.c"],
+    sources: &[EeObject {
+        source: "libdma.c",
+        name: "libdma",
+        defines: &[],
+    }],
     headers: &[
         "sce/ee/libdma/libdma.h",
         "sce/ee/eeregs.h",
@@ -42,7 +53,11 @@ pub(super) const LIBSCF: EeBuild = EeBuild {
     compile_dir: "",
     small_data: 0,
     filename: "libscf.a",
-    sources: &["libscf.c"],
+    sources: &[EeObject {
+        source: "libscf.c",
+        name: "libscf",
+        defines: &[],
+    }],
     headers: &[
         "sce/ee/libscf/libscf.h",
         "sce/ee/libcdvd/libcdvd.h",
@@ -76,7 +91,11 @@ pub(super) const LIBMC: EeBuild = EeBuild {
     compile_dir: "build",
     small_data: 0,
     filename: "libmc.a",
-    sources: &["libmc.c"],
+    sources: &[EeObject {
+        source: "libmc.c",
+        name: "libmc",
+        defines: &[],
+    }],
     headers: &[
         "sce/ee/libmc/libmc.h",
         "sce/ee/libkernl/eekernel.h",
@@ -102,7 +121,11 @@ pub(super) const LIBSCEDEMO: EeBuild = EeBuild {
     compile_dir: "",
     small_data: 8,
     filename: "libscedemo.a",
-    sources: &["libscedemo.c"],
+    sources: &[EeObject {
+        source: "libscedemo.c",
+        name: "libscedemo",
+        defines: &[],
+    }],
     headers: &[
         "sce/ee/libscedemo/libscedemo.h",
         "sce/ee/eeregs.h",
@@ -118,6 +141,99 @@ pub(super) const LIBSCEDEMO: EeBuild = EeBuild {
         "sce/ee/newlib/stdarg.h",
         "sce/ee/newlib/va-mips.h",
     ],
+};
+
+const GRAPH_OBJECTS: &[EeObject] = &[
+    EeObject {
+        source: "graphdev.c",
+        name: "resetgraph",
+        defines: &["F_resetgraph"],
+    },
+    EeObject {
+        source: "graphdev.c",
+        name: "resetpath",
+        defines: &["F_resetpath"],
+    },
+    EeObject {
+        source: "graphdev.c",
+        name: "putdispenv",
+        defines: &["F_putdispenv"],
+    },
+    EeObject {
+        source: "graphdev.c",
+        name: "syncv",
+        defines: &["F_syncv"],
+    },
+    EeObject {
+        source: "graphdev.c",
+        name: "syncpath",
+        defines: &["F_syncpath"],
+    },
+    EeObject {
+        source: "graphdev.c",
+        name: "setdefloadimage",
+        defines: &["F_setdefloadimage"],
+    },
+    EeObject {
+        source: "graphdev.c",
+        name: "execloadimage",
+        defines: &["F_execloadimage"],
+    },
+    EeObject {
+        source: "graphdev.c",
+        name: "execstoreimage",
+        defines: &["F_execstoreimage"],
+    },
+    EeObject {
+        source: "graphdev.c",
+        name: "putimr",
+        defines: &["F_putimr"],
+    },
+    EeObject {
+        source: "graphdev.c",
+        name: "getimr",
+        defines: &["F_getimr"],
+    },
+];
+
+pub(super) const LIBGRAPH: EeBuild = EeBuild {
+    source_dir: "sce/ee/libgraph",
+    output_dir: "sce/ee/libgraph",
+    defines: &[],
+    compile_dir: "",
+    small_data: 0,
+    filename: "libgraph.a",
+    sources: GRAPH_OBJECTS,
+    headers: &[
+        "sce/ee/libgraph/libgraph.h",
+        "sce/ee/eeasm.h",
+        "sce/ee/eeregs.h",
+        "sce/ee/libkernl/eekernel.h",
+        "sce/ee/newlib/stdio.h",
+        "sce/ee/newlib/_ansi.h",
+        "sce/ee/newlib/sys/config.h",
+        "sce/ee/newlib/sys/reent.h",
+        "sce/ee/newlib/time.h",
+        "sce/ee/newlib/machine/time.h",
+        "sce/ee/newlib/machine/types.h",
+        "sce/ee/newlib/stddef.h",
+        "sce/ee/newlib/stdarg.h",
+        "sce/ee/newlib/va-mips.h",
+    ],
+};
+
+pub(super) const LIBGRAPH_EARLY: EeBuild = EeBuild {
+    sources: &[
+        GRAPH_OBJECTS[0],
+        GRAPH_OBJECTS[1],
+        GRAPH_OBJECTS[2],
+        GRAPH_OBJECTS[3],
+        GRAPH_OBJECTS[4],
+        GRAPH_OBJECTS[7],
+        GRAPH_OBJECTS[8],
+        GRAPH_OBJECTS[9],
+    ],
+    ..LIBGRAPH
 };
 
 pub(super) fn ninja_section(
@@ -153,15 +269,16 @@ rule ee_archive
             .map(|header| format!("$repo_root/{header}"))
             .collect::<Vec<_>>()
             .join(" ");
-        let defines = build
-            .defines
-            .iter()
-            .map(|define| format!("'-D{define}'"))
-            .collect::<Vec<_>>()
-            .join(" ");
         let mut objects = Vec::new();
         for source in build.sources {
-            let source_path = Path::new(source);
+            let defines = build
+                .defines
+                .iter()
+                .chain(source.defines.iter())
+                .map(|define| format!("'-D{define}'"))
+                .collect::<Vec<_>>()
+                .join(" ");
+            let source_path = Path::new(source.source);
             let source_name = source_path.file_name().unwrap().to_str().unwrap();
             let parent = source_path.parent().unwrap();
             let source_dir = repo_root.join(build.source_dir).join(parent);
@@ -173,7 +290,10 @@ rule ee_archive
             if input.symlink_metadata().is_err() {
                 std::os::unix::fs::symlink(source_dir.join(source_name), &input)?;
             }
-            let source_workdir = Path::new(output_dir).join("src").join(parent);
+            let source_workdir = Path::new(output_dir)
+                .join("src")
+                .join(source.name)
+                .join(parent);
             fs::create_dir_all(build_dir.join(&source_workdir))?;
             let preprocessed = source_workdir.join(source_name);
             let source_workdir = source_workdir.join(build.compile_dir);
@@ -182,8 +302,8 @@ rule ee_archive
                 "{}{source_name}",
                 "../".repeat(Path::new(build.compile_dir).components().count())
             );
-            let assembly = Path::new(output_dir).join(source_path.with_extension("s"));
-            let object = Path::new(output_dir).join(source_path.with_extension("o"));
+            let assembly = Path::new(output_dir).join(format!("{}.s", source.name));
+            let object = Path::new(output_dir).join(format!("{}.o", source.name));
             fs::create_dir_all(build_dir.join(object.parent().unwrap()))?;
             ninja.push_str(&format!(
                 "build {preprocessed}: ee_preprocess {source_dir}/{source_name} | {headers} $ee_tool_dir/cpp

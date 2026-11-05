@@ -39,4 +39,10 @@ int sceCdDiskReady(int mode);
 
 #define SCECdNotReady 0x06
 
+typedef struct {
+  u_char status, second, minute, hour, reserved, day, month, year;
+} sceCdCLOCK;
+
+int _sceCdRC(sceCdCLOCK* clock);
+
 #endif

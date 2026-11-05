@@ -277,6 +277,46 @@ pub(super) const PADMAN_4_2: IopBuild = IopBuild {
     ..DEFAULT_BUILD
 };
 
+pub(super) const MCMAN_2_21: IopBuild = IopBuild {
+    output_dir: "sce/iop/mcman",
+    filename: "MCMAN.IRX",
+    version: "2.21",
+    sha256: "4c34f10290e1acedc36a2616ddd6df18b994239734c6b1dd9667f9aeaa255dfd",
+    source_dir: "sce/iop/mcman",
+    sources: &[
+        "core.c",
+        "protocol.c",
+        "geometry.c",
+        "ps2.c",
+        "ps1.c",
+        "storage.c",
+        "driver.c",
+        "state.s",
+    ],
+    imports: &[
+        "sce/iop/loadcore/loadcore.tbl",
+        "sce/iop/intrman/intrman.tbl",
+        "sce/iop/sio2man/sio2man.tbl",
+        "sce/iop/sysclib/sysclib.tbl",
+        "sce/iop/thbase/thbase.tbl",
+        "sce/iop/thsemap/thsemap.tbl",
+        "sce/iop/modload/modload.tbl",
+        "sce/iop/ioman/ioman.tbl",
+        "sce/iop/secrman/secrman.tbl",
+        "sce/iop/cdvdman/cdvdman.tbl",
+    ],
+    assembler_debug: true,
+    // Preserve section alignment and collect the fixed workspace into BSS.
+    linker_script: Some("layout.ld"),
+    exports: Some(ExportTable {
+        table: "mcman.tbl",
+        object: "exports",
+        position: ExportPosition::First,
+    }),
+
+    ..DEFAULT_BUILD
+};
+
 const OVERLORD_SOURCES: &[&str] = &[
     "ramdisk.c",
     "fakeiso.c",

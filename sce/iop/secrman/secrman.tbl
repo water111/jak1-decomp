@@ -1,0 +1,10 @@
+Libname secrman
+Version 1.3
+Flags 0
+Entry -
+Entry -
+Entry -
+Entry -
+Entry SecrSetMcCommandHandler
+Entry SecrSetMcDevIDHandler
+Entry SecrAuthCard

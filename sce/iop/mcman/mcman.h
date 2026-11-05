@@ -33,7 +33,6 @@ int McDetectCard2(int port, int slot);
 int McGetFormat(int port, int slot);
 int McGetEntSpace(int port, int slot, const char* name);
 int McReplaceBadBlock(void);
-// Reconstructed name for ordinal 26: forwards (mode & 1) | 2 to SIO2 callback 3.
 int McSetSio2Mode(int mode);
 int McUnformat(int port, int slot);
 int McInit(int value);

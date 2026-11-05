@@ -61,4 +61,7 @@ int sio2_call_callback2(void);
 int sio2_call_callback3(void);
 void sio2_call_callback4(void);
 
+void sio2_mc_init_legacy(void);
+void sio2_transfer_reset_legacy(void);
+
 #endif
