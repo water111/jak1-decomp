@@ -20,4 +20,7 @@
 #define D_RBOR ((volatile unsigned*)0x1000e050)
 #define D_STADR ((volatile unsigned*)0x1000e060)
 
+#define GS_PMODE ((volatile unsigned long*)0x12000000)
+#define GS_BGCOLOR ((volatile unsigned long*)0x120000e0)
+
 #endif

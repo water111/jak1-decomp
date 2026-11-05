@@ -1,0 +1,23 @@
+#ifndef SCE_IOP_PADMAN_RPC_H
+#define SCE_IOP_PADMAN_RPC_H
+#define PAD_RPC_PORT_OPEN 1
+#define PAD_RPC_INFO_ACT 3
+#define PAD_RPC_INFO_COMB 4
+#define PAD_RPC_INFO_MODE 5
+#define PAD_RPC_SET_MAIN_MODE 6
+#define PAD_RPC_SET_ACT_DIRECT 7
+#define PAD_RPC_SET_ACT_ALIGN 8
+#define PAD_RPC_GET_BUTTON_MASK 9
+#define PAD_RPC_SET_BUTTON_INFO 10
+#define PAD_RPC_SET_VREF_PARAM 11
+#define PAD_RPC_GET_PORT_MAX 12
+#define PAD_RPC_GET_SLOT_MAX 13
+#define PAD_RPC_PORT_CLOSE 14
+#define PAD_RPC_END 15
+#define PAD_RPC_INIT 16
+#define PAD_RPC_GET_MOD_VERSION 18
+#define PAD_RPC_NOOP 19
+#define PAD_RPC_SET_DEBUG 20
+
+int pad_rpc_init(int priority);
+#endif

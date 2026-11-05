@@ -1,0 +1,22 @@
+Libname padman
+Version 2.3
+Flags 0x0000
+
+Entry start	# 000
+Entry -	# 001
+Entry -	# 002
+Entry -	# 003
+Entry padInit	# 004
+Entry padEnd	# 005
+Entry padPortOpen	# 006
+Entry padPortClose	# 007
+Entry padGetInBuffer	# 008
+Entry padGetModeConfig	# 009
+Entry padInfoAct	# 010
+Entry padInfoComb	# 011
+Entry padInfoMode	# 012
+Entry padSetMainMode	# 013
+Entry padSetActDirect	# 014
+Entry padSetActAlign	# 015
+Entry padGetButtonMask	# 016
+Entry padSetButtonInfo	# 017

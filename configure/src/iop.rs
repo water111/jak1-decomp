@@ -197,6 +197,86 @@ pub(super) const LIBSD_1_4: IopBuild = IopBuild {
     ..DEFAULT_BUILD
 };
 
+pub(super) const USBD_2_4: IopBuild = IopBuild {
+    output_dir: "sce/iop/usbd",
+    filename: "USBD.IRX",
+    version: "2.4",
+    sha256: "b369c4383e58167c15dd6fd80d90f36de4aa293e4b4fb18ca4c6ca9d2ec5a1da",
+    source_dir: "sce/iop/usbd",
+    sources: &[
+        "hub.c",
+        "controller.c",
+        "version.c",
+        "api.c",
+        "device.c",
+        "init.c",
+    ],
+    imports: &[
+        "sce/iop/sysmem/sysmem.tbl",
+        "sce/iop/loadcore/loadcore.tbl",
+        "sce/iop/intrman/intrman.tbl",
+        "sce/iop/stdio/stdio.tbl",
+        "sce/iop/thbase/thbase.tbl",
+        "sce/iop/thevent/thevent.tbl",
+        "sce/iop/thsemap/thsemap.tbl",
+        "sce/iop/sysclib/sysclib.tbl",
+    ],
+    assembler_debug: true,
+    small_data_sources: &["version.c"],
+    exports: Some(ExportTable {
+        table: "usbd.tbl",
+        object: "exports",
+        position: ExportPosition::First,
+    }),
+    ..DEFAULT_BUILD
+};
+
+pub(super) const PADMAN_4_2: IopBuild = IopBuild {
+    output_dir: "sce/iop/padman",
+    filename: "PADMAN.IRX",
+    version: "4.2",
+    sha256: "10120230a66017c200c5ce8e4b9f11c42ffb240bc2df9d194e5d2624625df5d7",
+    source_dir: "sce/iop/padman",
+    sources: &[
+        "core.c",
+        "state.s",
+        "transfer.c",
+        "commands.c",
+        "command_find.c",
+        "command_mouse.c",
+        "command_digital.c",
+        "command_analog.c",
+        "command_negicon.c",
+        "command_joystick.c",
+        "command_konami_gun.c",
+        "command_namco_gun.c",
+        "command_jogcon.c",
+        "command_config.c",
+        "rpc.c",
+    ],
+    imports: &[
+        "sce/iop/sysmem/sysmem.tbl",
+        "sce/iop/loadcore/loadcore.tbl",
+        "sce/iop/intrman/intrman.tbl",
+        "sce/iop/stdio/stdio.tbl",
+        "sce/iop/sio2man/sio2man.tbl",
+        "sce/iop/thbase/thbase.tbl",
+        "sce/iop/thevent/thevent.tbl",
+        "sce/iop/sifman/sifman.tbl",
+        "sce/iop/sifcmd/sifcmd.tbl",
+        "sce/iop/vblank/vblank.tbl",
+        "sce/iop/sysclib/sysclib.tbl",
+    ],
+    assembler_debug: true,
+    exports: Some(ExportTable {
+        table: "padman.tbl",
+        object: "exports",
+        position: ExportPosition::Last,
+    }),
+
+    ..DEFAULT_BUILD
+};
+
 const OVERLORD_SOURCES: &[&str] = &[
     "ramdisk.c",
     "fakeiso.c",
