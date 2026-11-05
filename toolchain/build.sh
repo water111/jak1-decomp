@@ -46,3 +46,46 @@ cp cc1 cpp "$OUT/iop/"
 for tool in as ld ar nm objcopy objdump; do
     cp -L "$BUILD/install/bin/mipsel-scei-elfl-$tool" "$OUT/iop/iop-$tool"
 done
+
+BUILD=/tmp/ee-toolchain
+mkdir -p "$BUILD"
+tar -xzf "$ROOT/gcc_sources/ee-2.9-991111.tar.gz" -C "$BUILD"
+cd "$BUILD"
+patch --batch -p0 < "$ROOT/ee-gcc.patch"
+cd "$BUILD/src"
+patch --batch -p1 < "$ROOT/ee-fixes.patch"
+
+export BISON_SIMPLE="$BUILD/src/bison/bison.simple"
+export BISON_HAIRY="$BUILD/src/bison/bison.hairy"
+
+for component in intl libiberty bison bfd opcodes gas binutils ld; do
+    mkdir -p "$BUILD/build/$component"
+    cd "$BUILD/build/$component"
+    echo "Building EE $component"
+    "$BUILD/src/$component/configure" --host=i686-pc-linux-gnu --target=ee \
+        --disable-nls --disable-shared --prefix="$BUILD/install"
+    link_flags=${BINUTILS_LDFLAGS:-}
+    if [ "$component" = bison ]; then
+        link_flags=
+    fi
+    make -j"$JOBS" CFLAGS="$CFLAGS" LDFLAGS="$link_flags" \
+        YACC="$BUILD/build/bison/bison -y" MAKEINFO=true
+done
+
+mkdir -p "$BUILD/build/gcc"
+cd "$BUILD/build/gcc"
+echo 'Building EE GCC'
+AS="$BUILD/build/gas/as-new" "$BUILD/src/gcc/configure" \
+    --host=i686-pc-linux-gnu --target=ee --with-gnu-as --with-gnu-ld \
+    --enable-c-cpplib --enable-languages=c,c++ --prefix="$BUILD/install"
+make -j"$JOBS" cc1 cc1plus cpp CFLAGS="$CFLAGS" \
+    BISON="$BUILD/build/bison/bison" MAKEINFO=true
+
+mkdir -p "$OUT/ee"
+cp cc1 cc1plus cpp "$OUT/ee/"
+cp "$BUILD/build/gas/as-new" "$OUT/ee/ee-as"
+cp "$BUILD/build/ld/ld-new" "$OUT/ee/ee-ld"
+cp "$BUILD/build/binutils/nm-new" "$OUT/ee/ee-nm"
+for tool in ar objcopy objdump; do
+    cp "$BUILD/build/binutils/$tool" "$OUT/ee/ee-$tool"
+done

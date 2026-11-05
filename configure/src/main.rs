@@ -1,5 +1,7 @@
+mod ee;
 mod iop;
 mod sha256;
+use ee::EeBuild;
 use iop::IopBuild;
 use std::{fs, io, path::Path, process::Command};
 
@@ -7,6 +9,7 @@ struct Revision {
     name: &'static str,
     description: &'static str,
     iop_builds: &'static [IopBuild],
+    ee_builds: &'static [EeBuild],
 }
 
 // Some OVERLORDs are the same between game revisions and for those we just
@@ -15,57 +18,125 @@ const REVISIONS: &[Revision] = &[
     Revision {
         name: "jak1/20010903/ntsc/us",
         description: "NTSC September Preview",
-        iop_builds: &[iop::OVERLORD_20010903, iop::SIO2MAN_2_4, iop::MCSERV_2_12],
+        ee_builds: &[ee::LIBDMA],
+        iop_builds: &[
+            iop::OVERLORD_20010903,
+            iop::SIO2MAN_2_4,
+            iop::MCSERV_2_12,
+            iop::LIBSD_1_4,
+            iop::IOPSETUP,
+        ],
     },
     Revision {
         name: "jak1/20010920/ntsc/jp",
         description: "NTSC Japanese Demo",
-        iop_builds: &[iop::OVERLORD_20010920, iop::SIO2MAN_2_4, iop::MCSERV_2_12],
+        ee_builds: &[ee::LIBDMA],
+        iop_builds: &[
+            iop::OVERLORD_20010920,
+            iop::SIO2MAN_2_4,
+            iop::MCSERV_2_12,
+            iop::LIBSD_1_4,
+        ],
     },
     Revision {
         name: "jak1/20011002/ntsc/us",
         description: "NTSC Cingular Demo",
-        iop_builds: &[iop::OVERLORD_20011002, iop::SIO2MAN_2_4, iop::MCSERV_2_12],
+        ee_builds: &[ee::LIBDMA],
+        iop_builds: &[
+            iop::OVERLORD_20011002,
+            iop::SIO2MAN_2_4,
+            iop::MCSERV_2_12,
+            iop::LIBSD_1_4,
+        ],
     },
     Revision {
         name: "jak1/20011019/ntsc/us",
         description: "NTSC October Prototype",
-        iop_builds: &[iop::OVERLORD_20011019, iop::SIO2MAN_2_4, iop::MCSERV_2_12],
+        ee_builds: &[ee::LIBDMA],
+        iop_builds: &[
+            iop::OVERLORD_20011019,
+            iop::SIO2MAN_2_4,
+            iop::MCSERV_2_12,
+            iop::LIBSD_1_4,
+            iop::IOPSETUP,
+        ],
     },
     Revision {
         name: "jak1/20011031/ntsc/us",
         description: "NTSC Retail",
-        iop_builds: &[iop::OVERLORD_20011031, iop::SIO2MAN_2_4, iop::MCSERV_2_12],
+        ee_builds: &[ee::LIBDMA],
+        iop_builds: &[
+            iop::OVERLORD_20011031,
+            iop::SIO2MAN_2_4,
+            iop::MCSERV_2_12,
+            iop::LIBSD_1_4,
+        ],
     },
     Revision {
         name: "jak1/20011102/pal/eu",
         description: "PAL OPS2M Demo",
-        iop_builds: &[iop::OVERLORD_20011102, iop::SIO2MAN_2_4, iop::MCSERV_2_12],
+        ee_builds: &[ee::LIBDMA],
+        iop_builds: &[
+            iop::OVERLORD_20011102,
+            iop::SIO2MAN_2_4,
+            iop::MCSERV_2_12,
+            iop::LIBSD_1_4,
+        ],
     },
     Revision {
         name: "jak1/20011104/pal/eu",
         description: "PAL Retail",
-        iop_builds: &[iop::OVERLORD_20011104, iop::SIO2MAN_2_4, iop::MCSERV_2_12],
+        ee_builds: &[ee::LIBDMA],
+        iop_builds: &[
+            iop::OVERLORD_20011104,
+            iop::SIO2MAN_2_4,
+            iop::MCSERV_2_12,
+            iop::LIBSD_1_4,
+        ],
     },
     Revision {
         name: "jak1/20011111/pal/eu",
         description: "PAL Demo",
-        iop_builds: &[iop::OVERLORD_20011111, iop::SIO2MAN_2_4, iop::MCSERV_2_12],
+        ee_builds: &[ee::LIBDMA],
+        iop_builds: &[
+            iop::OVERLORD_20011111,
+            iop::SIO2MAN_2_4,
+            iop::MCSERV_2_12,
+            iop::LIBSD_1_4,
+        ],
     },
     Revision {
         name: "jak1/20011121/ntsc/jp",
         description: "NTSC Japanese Retail",
-        iop_builds: &[iop::OVERLORD_20011121, iop::SIO2MAN_2_4, iop::MCSERV_2_12],
+        ee_builds: &[ee::LIBDMA],
+        iop_builds: &[
+            iop::OVERLORD_20011121,
+            iop::SIO2MAN_2_4,
+            iop::MCSERV_2_12,
+            iop::LIBSD_1_4,
+        ],
     },
     Revision {
         name: "jak1/20011127/ntsc/us",
         description: "NTSC Greatest Hits",
-        iop_builds: &[iop::OVERLORD_20011121, iop::SIO2MAN_2_4, iop::MCSERV_2_12],
+        ee_builds: &[ee::LIBDMA],
+        iop_builds: &[
+            iop::OVERLORD_20011121,
+            iop::SIO2MAN_2_4,
+            iop::MCSERV_2_12,
+            iop::LIBSD_1_4,
+        ],
     },
     Revision {
         name: "jak1/20020121/ntsc/kr",
         description: "NTSC Korean Retail",
-        iop_builds: &[iop::OVERLORD_20011031, iop::SIO2MAN_2_4, iop::MCSERV_2_12],
+        ee_builds: &[ee::LIBDMA],
+        iop_builds: &[
+            iop::OVERLORD_20011031,
+            iop::SIO2MAN_2_4,
+            iop::MCSERV_2_12,
+            iop::LIBSD_1_4,
+        ],
     },
 ];
 
@@ -99,6 +170,7 @@ fn build_revision(repo_root: &Path, build_dir: &Path, revision: &Revision) -> io
         build_dir,
         revision.iop_builds,
     )?);
+    ninja.push_str(&ee::ninja_section(build_dir, revision.ee_builds)?);
     write_if_changed(&build_dir.join("build.ninja"), &ninja)?;
     let status = Command::new("ninja").current_dir(build_dir).status()?;
     if !status.success() {

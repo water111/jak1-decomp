@@ -2,7 +2,7 @@ Libname libsd
 Version 1.4
 Flags 0x0000
 
-Entry -	# 000
+Entry start	# 000
 Entry -	# 001
 Entry sceSdQuit	# 002
 Entry -	# 003

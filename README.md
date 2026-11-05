@@ -22,6 +22,11 @@ The I/O Processor (IOP) runs .IRX modules. The build process for this is somewha
 - Those stubs are linked into the final IOP object
 - We recreate `iopfixup` to build the final `.IRX`.
 
+### EE Library Building
+
+`configure/src/ee.rs` adds EE libraries written in C or C++ to the same Ninja build, using
+`toolchain/bin/ee`.
+
 ## Asset extraction
 
 Game art assets aren't included and must be extracted from your game first.

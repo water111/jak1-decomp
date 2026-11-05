@@ -5,6 +5,8 @@ WORKDIR /src
 COPY gcc_sources gcc_sources
 COPY iop-gcc.patch iop-gcc.patch
 COPY iop-fixes.patch iop-fixes.patch
+COPY ee-gcc.patch ee-gcc.patch
+COPY ee-fixes.patch ee-fixes.patch
 COPY build.sh build.sh
 ENV OUT=/out CC="gcc -m32 -static" BINUTILS_LDFLAGS="-all-static" CFLAGS="-O2 -std=gnu89 -fcommon -fno-strict-aliasing -fpermissive"
 ENTRYPOINT ["/bin/sh", "/src/build.sh"]

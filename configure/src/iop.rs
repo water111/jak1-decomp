@@ -134,6 +134,69 @@ pub(super) const MCSERV_2_12: IopBuild = IopBuild {
     ..DEFAULT_BUILD
 };
 
+pub(super) const IOPSETUP: IopBuild = IopBuild {
+    output_dir: "sce/iop/iopsetup",
+    filename: "IOPSETUP.IRX",
+    version: "module-0x0000",
+    sha256: "90cd8eb3a86b63e64bd1e5de8c13830f6e133ec557f1c006d913d12c030ac2e3",
+    source_dir: "sce/iop/iopsetup",
+    sources: &["dongle.c"],
+    imports: &[
+        "sce/iop/usbd/usbd.tbl",
+        "sce/iop/stdio/stdio.tbl",
+        "sce/iop/sysclib/sysclib.tbl",
+        "sce/iop/thbase/thbase.tbl",
+    ],
+    debug_import_source: Some("/tmp/ccR4mDML_ilb_stub.s"),
+    optimization: "-O0",
+    strip: StripMode::None,
+    ..DEFAULT_BUILD
+};
+
+pub(super) const LIBSD_1_4: IopBuild = IopBuild {
+    output_dir: "sce/iop/libsd",
+    filename: "LIBSD.IRX",
+    version: "1.4",
+    sha256: "0b580282b6f54fac2ae130318e378a197ff8a086ea077006cecb1b532a229876",
+    source_dir: "sce/iop/libsd",
+    sources: &[
+        "state.s",
+        "libsd.c",
+        "data.c",
+        "effect_registers.c",
+        "effect_clear.c",
+        "effect.c",
+        "init.c",
+        "init_state.c",
+        "voice_transfer.c",
+        "voice_status.c",
+        "block_transfer.c",
+        "block_status.c",
+        "transfers.c",
+        "batch.c",
+        "registers.c",
+        "pitch.c",
+        "attributes.c",
+        "transfer_callbacks.c",
+        "irq_callbacks.c",
+        "voices_init.c",
+    ],
+    imports: &[
+        "sce/iop/intrman/intrman.tbl",
+        "sce/iop/loadcore/loadcore.tbl",
+        "sce/iop/sifman/sifman.tbl",
+        "sce/iop/stdio/stdio.tbl",
+        "sce/iop/thbase/thbase.tbl",
+        "sce/iop/thevent/thevent.tbl",
+    ],
+    exports: Some(ExportTable {
+        table: "libsd.tbl",
+        object: "exports",
+        position: ExportPosition::First,
+    }),
+    ..DEFAULT_BUILD
+};
+
 const OVERLORD_SOURCES: &[&str] = &[
     "ramdisk.c",
     "fakeiso.c",
