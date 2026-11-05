@@ -19,6 +19,7 @@ const REVISIONS: &[Revision] = &[
         name: "jak1/20010903/ntsc/us",
         description: "NTSC September Preview",
         ee_builds: &[
+            ee::LIBGCC,
             ee::LIBCDVD,
             ee::LIBPAD,
             ee::LIBGRAPH_EARLY,
@@ -41,6 +42,7 @@ const REVISIONS: &[Revision] = &[
         name: "jak1/20010920/ntsc/jp",
         description: "NTSC Japanese Demo",
         ee_builds: &[
+            ee::LIBGCC,
             ee::LIBCDVD,
             ee::LIBPAD,
             ee::LIBGRAPH,
@@ -63,6 +65,7 @@ const REVISIONS: &[Revision] = &[
         name: "jak1/20011002/ntsc/us",
         description: "NTSC Cingular Demo",
         ee_builds: &[
+            ee::LIBGCC,
             ee::LIBCDVD,
             ee::LIBPAD,
             ee::LIBGRAPH,
@@ -86,6 +89,7 @@ const REVISIONS: &[Revision] = &[
         name: "jak1/20011019/ntsc/us",
         description: "NTSC October Prototype",
         ee_builds: &[
+            ee::LIBGCC,
             ee::LIBCDVD,
             ee::LIBPAD,
             ee::LIBGRAPH,
@@ -109,6 +113,7 @@ const REVISIONS: &[Revision] = &[
         name: "jak1/20011031/ntsc/us",
         description: "NTSC Retail",
         ee_builds: &[
+            ee::LIBGCC,
             ee::LIBCDVD,
             ee::LIBPAD,
             ee::LIBGRAPH,
@@ -131,6 +136,7 @@ const REVISIONS: &[Revision] = &[
         name: "jak1/20011102/pal/eu",
         description: "PAL OPS2M Demo",
         ee_builds: &[
+            ee::LIBGCC,
             ee::LIBCDVD,
             ee::LIBPAD,
             ee::LIBGRAPH,
@@ -154,6 +160,7 @@ const REVISIONS: &[Revision] = &[
         name: "jak1/20011104/pal/eu",
         description: "PAL Retail",
         ee_builds: &[
+            ee::LIBGCC,
             ee::LIBCDVD,
             ee::LIBPAD,
             ee::LIBGRAPH,
@@ -176,6 +183,7 @@ const REVISIONS: &[Revision] = &[
         name: "jak1/20011111/pal/eu",
         description: "PAL Demo",
         ee_builds: &[
+            ee::LIBGCC,
             ee::LIBCDVD,
             ee::LIBPAD,
             ee::LIBGRAPH,
@@ -198,6 +206,7 @@ const REVISIONS: &[Revision] = &[
         name: "jak1/20011121/ntsc/jp",
         description: "NTSC Japanese Retail",
         ee_builds: &[
+            ee::LIBGCC,
             ee::LIBCDVD,
             ee::LIBPAD,
             ee::LIBGRAPH,
@@ -220,6 +229,7 @@ const REVISIONS: &[Revision] = &[
         name: "jak1/20011127/ntsc/us",
         description: "NTSC Greatest Hits",
         ee_builds: &[
+            ee::LIBGCC,
             ee::LIBCDVD,
             ee::LIBPAD,
             ee::LIBGRAPH,
@@ -242,6 +252,7 @@ const REVISIONS: &[Revision] = &[
         name: "jak1/20020121/ntsc/kr",
         description: "NTSC Korean Retail",
         ee_builds: &[
+            ee::LIBGCC,
             ee::LIBCDVD,
             ee::LIBPAD,
             ee::LIBGRAPH,
