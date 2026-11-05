@@ -1,0 +1,41 @@
+Libname sysclib
+Version 1.2
+Flags 0x0000
+
+Entry -	# 000
+Entry -	# 001
+Entry -	# 002
+Entry -	# 003
+Entry -	# 004
+Entry -	# 005
+Entry -	# 006
+Entry -	# 007
+Entry -	# 008
+Entry -	# 009
+Entry -	# 010
+Entry -	# 011
+Entry -	# 012
+Entry memmove	# 013
+Entry memset	# 014
+Entry -	# 015
+Entry -	# 016
+Entry -	# 017
+Entry -	# 018
+Entry -	# 019
+Entry -	# 020
+Entry -	# 021
+Entry -	# 022
+Entry -	# 023
+Entry -	# 024
+Entry -	# 025
+Entry -	# 026
+Entry -	# 027
+Entry -	# 028
+Entry strncmp	# 029
+Entry -	# 030
+Entry -	# 031
+Entry -	# 032
+Entry -	# 033
+Entry -	# 034
+Entry -	# 035
+Entry strtol	# 036

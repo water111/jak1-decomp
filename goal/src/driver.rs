@@ -2,6 +2,9 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use crate::diagnostic::Diagnostic;
+pub use crate::diagnostic::{Diagnostic as CompilerMessage, DiagnosticLevel as MessageLevel};
+
 // The Driver is the top-level compiler entry point.
 // The driver itself handles build ordering logic.
 
@@ -17,19 +20,6 @@ use std::path::{Path, PathBuf};
 
 // integer ID used to represent a file in dependency tracking.
 pub type FileId = u32;
-
-// compiler diagnostics
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub enum MessageLevel {
-    Warning,
-    Error,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct CompilerMessage {
-    pub level: MessageLevel,
-    pub text: String,
-}
 
 // output of compiling a single file.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -382,7 +372,7 @@ impl Driver {
                         .or_else(|| messages.first())
                         .map_or_else(
                             || "compiler reported an error".to_owned(),
-                            |m| m.text.clone(),
+                            |m| m.message.clone(),
                         );
                     return Err(format!(
                         "could not compile {}: {message}",
@@ -465,10 +455,7 @@ impl Driver {
         let path = self.source_directory.join(&source_file.path);
         match fs::read(&path) {
             Ok(_) => Ok(CompileOutput::default()),
-            Err(error) => Err(vec![CompilerMessage {
-                level: MessageLevel::Error,
-                text: error.to_string(),
-            }]),
+            Err(error) => Err(vec![Diagnostic::error(error.to_string())]),
         }
     }
 
@@ -494,7 +481,7 @@ impl Driver {
                 MessageLevel::Warning => "warning",
                 MessageLevel::Error => "error",
             };
-            eprintln!("{}: {level}: {}", source_path.display(), message.text);
+            eprintln!("{}: {level}: {}", source_path.display(), message.message);
         }
     }
 }

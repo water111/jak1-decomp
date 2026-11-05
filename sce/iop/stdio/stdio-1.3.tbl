@@ -1,0 +1,9 @@
+Libname stdio
+Version 1.3
+Flags 0x0000
+
+Entry -	# 000
+Entry -	# 001
+Entry -	# 002
+Entry -	# 003
+Entry printf	# 004
