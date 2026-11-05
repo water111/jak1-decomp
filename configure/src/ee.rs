@@ -29,6 +29,30 @@ pub(super) const LIBDMA: EeBuild = EeBuild {
     ],
 };
 
+pub(super) const LIBSCF: EeBuild = EeBuild {
+    source_dir: "sce/ee/libscf",
+    output_dir: "sce/ee/libscf",
+    filename: "libscf.a",
+    sources: &["libscf.c"],
+    headers: &[
+        "sce/ee/libscf/libscf.h",
+        "sce/ee/libcdvd/libcdvd.h",
+        "sce/ee/libkernl/eekernel.h",
+        "sce/ee/libkernl/sifdev.h",
+        "sce/ee/newlib/assert.h",
+        "sce/ee/newlib/stdio.h",
+        "sce/ee/newlib/_ansi.h",
+        "sce/ee/newlib/sys/config.h",
+        "sce/ee/newlib/sys/reent.h",
+        "sce/ee/newlib/time.h",
+        "sce/ee/newlib/machine/time.h",
+        "sce/ee/newlib/machine/types.h",
+        "sce/ee/newlib/stddef.h",
+        "sce/ee/newlib/stdarg.h",
+        "sce/ee/newlib/va-mips.h",
+    ],
+};
+
 pub(super) fn ninja_section(build_dir: &Path, builds: &[EeBuild]) -> io::Result<String> {
     let mut ninja = String::from(
         r#"
