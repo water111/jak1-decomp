@@ -227,9 +227,9 @@ int sceMcSync(int mode, int* command, int* result) {
   int busy;
   if (!mcRunCmdNo)
     return -1;
-  busy = sceSifCheckStatRpc(&mcClientID);
+  busy = sceSifCheckStatRpc(&mcClientID.request);
   if (!mode && busy) {
-    while (sceSifCheckStatRpc(&mcClientID))
+    while (sceSifCheckStatRpc(&mcClientID.request))
       mcDelayThread(60);
     busy = 0;
   }

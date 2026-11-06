@@ -1,5 +1,7 @@
 use std::{fs, io, path::Path};
 
+mod libkernl;
+pub(super) use libkernl::LIBKERNL;
 mod newlib;
 mod startup;
 pub(super) use newlib::{LIBC, LIBC_EARLY, LIBM};
@@ -27,6 +29,8 @@ pub(super) struct EeBuild {
     pub filename: &'static str,
     pub sources: &'static [EeObject],
     pub headers: &'static [&'static str],
+    pub extra_ninja: &'static str,
+    pub extra_objects: &'static [&'static str],
 }
 
 pub(super) const LIBDMA: EeBuild = EeBuild {
@@ -47,6 +51,8 @@ pub(super) const LIBDMA: EeBuild = EeBuild {
         debug_name: None,
         defines: &[],
     }],
+    extra_ninja: "",
+    extra_objects: &[],
     headers: &[
         "sce/ee/libdma/libdma.h",
         "sce/ee/eeregs.h",
@@ -81,6 +87,8 @@ pub(super) const LIBSCF: EeBuild = EeBuild {
         debug_name: None,
         defines: &[],
     }],
+    extra_ninja: "",
+    extra_objects: &[],
     headers: &[
         "sce/ee/libscf/libscf.h",
         "sce/ee/libcdvd/libcdvd.h",
@@ -125,6 +133,8 @@ pub(super) const LIBMC: EeBuild = EeBuild {
         debug_name: None,
         defines: &[],
     }],
+    extra_ninja: "",
+    extra_objects: &[],
     headers: &[
         "sce/ee/libmc/libmc.h",
         "sce/ee/libkernl/eekernel.h",
@@ -168,6 +178,8 @@ pub(super) const LIBCDVD: EeBuild = EeBuild {
         debug_name: None,
         defines: &[],
     }],
+    extra_ninja: "",
+    extra_objects: &[],
     headers: &[
         "sce/ee/libcdvd/libcdvd.h",
         "sce/common/libcdvd/rpc.h",
@@ -214,6 +226,8 @@ pub(super) const LIBPAD: EeBuild = EeBuild {
         debug_name: None,
         defines: &["PAD_OPEN_ASM"],
     }],
+    extra_ninja: "",
+    extra_objects: &[],
     headers: &[
         "sce/ee/libpad/libpad.h",
         "sce/ee/libpad/port-open.inc",
@@ -251,6 +265,8 @@ pub(super) const LIBSCEDEMO: EeBuild = EeBuild {
         debug_name: None,
         defines: &[],
     }],
+    extra_ninja: "",
+    extra_objects: &[],
     headers: &[
         "sce/ee/libscedemo/libscedemo.h",
         "sce/ee/eeregs.h",
@@ -344,6 +360,8 @@ pub(super) const LIBGRAPH: EeBuild = EeBuild {
     small_data: 0,
     filename: "libgraph.a",
     sources: GRAPH_OBJECTS,
+    extra_ninja: "",
+    extra_objects: &[],
     headers: &[
         "sce/ee/libgraph/libgraph.h",
         "sce/ee/eeasm.h",
@@ -490,6 +508,8 @@ pub(super) const LIBGCC: EeBuild = EeBuild {
             ],
         },
     ],
+    extra_ninja: "",
+    extra_objects: &[],
     headers: &[
         "sce/ee/libgcc/config/tconfig.h",
         "sce/ee/libgcc/config/tm.h",
@@ -545,11 +565,18 @@ rule ee_archive
 "#,
     );
     for build in builds {
+        ninja.push_str(build.extra_ninja);
         let output_dir = build.output_dir;
         let headers = build
             .headers
             .iter()
-            .map(|header| format!("$repo_root/{header}"))
+            .map(|header| {
+                if let Some(path) = header.strip_prefix("$build_dir/") {
+                    path.to_string()
+                } else {
+                    format!("$repo_root/{header}")
+                }
+            })
             .collect::<Vec<_>>()
             .join(" ");
         let mut objects = Vec::new();
@@ -656,6 +683,12 @@ build {object}: ee_assemble {assembly} | $ee_tool_dir/as
             ));
             objects.push(object.display().to_string());
         }
+        objects.extend(
+            build
+                .extra_objects
+                .iter()
+                .map(|object| format!("{output_dir}/{object}")),
+        );
         ninja.push_str(&format!(
             "build {output_dir}/{}: ee_archive {} | $ee_tool_dir/ee-ar\n",
             build.filename,

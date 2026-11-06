@@ -20,5 +20,7 @@ pub(crate) const STARTUP: EeBuild = EeBuild {
     small_data: 0,
     filename: "startup.a",
     sources: &[CRT0],
+    extra_ninja: "",
+    extra_objects: &[],
     headers: &[],
 };

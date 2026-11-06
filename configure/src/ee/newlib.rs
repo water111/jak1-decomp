@@ -403,6 +403,8 @@ pub(crate) const LIBC: EeBuild = EeBuild {
         OBJECTS[51],
         OBJECTS[52],
     ],
+    extra_ninja: "",
+    extra_objects: &[],
     headers: &[
         "sce/ee/newlib/float.h",
         "sce/ee/newlib/limits.h",

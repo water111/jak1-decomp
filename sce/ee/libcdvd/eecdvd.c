@@ -644,11 +644,11 @@ int sceCdSync(int mode) {
   if (mode == 0) {
     if (SCE_CD_debug > 0)
       printf("N cmd wait\n");
-    while (c_cb_sem || sceSifCheckStatRpc(&cdrd))
+    while (c_cb_sem || sceSifCheckStatRpc(&cdrd.request))
       sceCdDelayThread(60);
     return 0;
   }
-  if (c_cb_sem || sceSifCheckStatRpc(&cdrd))
+  if (c_cb_sem || sceSifCheckStatRpc(&cdrd.request))
     return 1;
   return 0;
 }
@@ -662,11 +662,11 @@ int sceCdSyncS(int mode) {
   if (mode == 0) {
     if (SCE_CD_debug > 0)
       printf("S cmd wait\n");
-    while (sceSifCheckStatRpc(&cdrc))
+    while (sceSifCheckStatRpc(&cdrc.request))
       sceCdDelayThread(60);
     return 0;
   }
-  return sceSifCheckStatRpc(&cdrc);
+  return sceSifCheckStatRpc(&cdrc.request);
 }
 
 static int scmd_prechk(int command) {

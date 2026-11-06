@@ -20,6 +20,7 @@ const REVISIONS: &[Revision] = &[
         description: "NTSC September Preview",
         ee_builds: &[
             ee::STARTUP,
+            ee::LIBKERNL,
             ee::LIBC_EARLY,
             ee::LIBM,
             ee::LIBGCC,
@@ -46,6 +47,7 @@ const REVISIONS: &[Revision] = &[
         description: "NTSC Japanese Demo",
         ee_builds: &[
             ee::STARTUP,
+            ee::LIBKERNL,
             ee::LIBC,
             ee::LIBM,
             ee::LIBGCC,
@@ -72,6 +74,7 @@ const REVISIONS: &[Revision] = &[
         description: "NTSC Cingular Demo",
         ee_builds: &[
             ee::STARTUP,
+            ee::LIBKERNL,
             ee::LIBC,
             ee::LIBM,
             ee::LIBGCC,
@@ -99,6 +102,7 @@ const REVISIONS: &[Revision] = &[
         description: "NTSC October Prototype",
         ee_builds: &[
             ee::STARTUP,
+            ee::LIBKERNL,
             ee::LIBC,
             ee::LIBM,
             ee::LIBGCC,
@@ -126,6 +130,7 @@ const REVISIONS: &[Revision] = &[
         description: "NTSC Retail",
         ee_builds: &[
             ee::STARTUP,
+            ee::LIBKERNL,
             ee::LIBC,
             ee::LIBM,
             ee::LIBGCC,
@@ -152,6 +157,7 @@ const REVISIONS: &[Revision] = &[
         description: "PAL OPS2M Demo",
         ee_builds: &[
             ee::STARTUP,
+            ee::LIBKERNL,
             ee::LIBC,
             ee::LIBM,
             ee::LIBGCC,
@@ -179,6 +185,7 @@ const REVISIONS: &[Revision] = &[
         description: "PAL Retail",
         ee_builds: &[
             ee::STARTUP,
+            ee::LIBKERNL,
             ee::LIBC,
             ee::LIBM,
             ee::LIBGCC,
@@ -205,6 +212,7 @@ const REVISIONS: &[Revision] = &[
         description: "PAL Demo",
         ee_builds: &[
             ee::STARTUP,
+            ee::LIBKERNL,
             ee::LIBC,
             ee::LIBM,
             ee::LIBGCC,
@@ -231,6 +239,7 @@ const REVISIONS: &[Revision] = &[
         description: "NTSC Japanese Retail",
         ee_builds: &[
             ee::STARTUP,
+            ee::LIBKERNL,
             ee::LIBC,
             ee::LIBM,
             ee::LIBGCC,
@@ -257,6 +266,7 @@ const REVISIONS: &[Revision] = &[
         description: "NTSC Greatest Hits",
         ee_builds: &[
             ee::STARTUP,
+            ee::LIBKERNL,
             ee::LIBC,
             ee::LIBM,
             ee::LIBGCC,
@@ -283,6 +293,7 @@ const REVISIONS: &[Revision] = &[
         description: "NTSC Korean Retail",
         ee_builds: &[
             ee::STARTUP,
+            ee::LIBKERNL,
             ee::LIBC,
             ee::LIBM,
             ee::LIBGCC,

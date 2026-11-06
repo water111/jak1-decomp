@@ -39,11 +39,11 @@ extern int sceSifBindRpc(SifRpcClient*, unsigned, unsigned);
 extern int
 sceSifCallRpc(SifRpcClient*, unsigned, unsigned, void*, int, void*, int, void (*)(void*), void*);
 
-int sceSifCheckStatRpc(SifRpcClient* client);
+int sceSifCheckStatRpc(SifRpcRequest* request);
 
 int sceSifDmaStat(unsigned id);
 
-void sceSifRemoveCmdHandler(int command);
-void sceSifAddCmdHandler(int command, void (*handler)(void*, void*), void* argument);
+void sceSifRemoveCmdHandler(unsigned command);
+void sceSifAddCmdHandler(unsigned command, void (*handler)(void*, void*), void* argument);
 
 #endif
