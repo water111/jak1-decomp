@@ -116,7 +116,7 @@ pub fn fnv64(bytes: &[u8]) -> u64 {
 }
 
 #[derive(Default)]
-struct IdentityHasher(u64);
+pub(crate) struct IdentityHasher(u64);
 
 impl Hasher for IdentityHasher {
     fn finish(&self) -> u64 {
@@ -133,10 +133,12 @@ impl Hasher for IdentityHasher {
 }
 
 type IdentityBuildHasher = BuildHasherDefault<IdentityHasher>;
+pub(crate) type SymbolMap<V> = HashMap<SymbolId, V, IdentityBuildHasher>;
+pub(crate) type IdentityMap<K, V> = HashMap<K, V, IdentityBuildHasher>;
 
 #[derive(Debug, Default)]
 pub struct SymbolTable {
-    symbols: HashMap<SymbolId, Box<str>, IdentityBuildHasher>,
+    symbols: SymbolMap<Box<str>>,
 }
 
 impl SymbolTable {
@@ -249,31 +251,14 @@ impl ConsHeap {
 
     pub fn collect(&mut self, roots: &[Object]) -> Result<CollectionStats, String> {
         let allocated_before = self.allocated;
+        self.clear_marks();
         self.mark_stack.clear();
         for root in roots {
             enqueue_pairs(root, &mut self.mark_stack);
         }
 
         while let Some(id) = self.mark_stack.pop() {
-            let newly_marked = match self.slots.get_mut(id.0 as usize) {
-                Some(ConsSlot::Occupied { marked, .. }) if !*marked => {
-                    *marked = true;
-                    true
-                }
-                Some(ConsSlot::Occupied { .. }) => false,
-                Some(ConsSlot::Free { .. }) => {
-                    return Err(format!(
-                        "internal compiler error: object refers to freed cons cell {}",
-                        id.0
-                    ));
-                }
-                None => {
-                    return Err(format!(
-                        "internal compiler error: object refers to invalid cons cell {}",
-                        id.0
-                    ));
-                }
-            };
+            let newly_marked = self.mark(id)?;
             if newly_marked {
                 let ConsSlot::Occupied { cell, .. } = &self.slots[id.0 as usize] else {
                     unreachable!();
@@ -283,6 +268,41 @@ impl ConsHeap {
             }
         }
 
+        let freed = self.sweep();
+        Ok(CollectionStats {
+            allocated_before,
+            freed,
+            allocated_after: self.allocated,
+        })
+    }
+
+    pub(crate) fn clear_marks(&mut self) {
+        for slot in &mut self.slots {
+            if let ConsSlot::Occupied { marked, .. } = slot {
+                *marked = false;
+            }
+        }
+    }
+
+    pub(crate) fn mark(&mut self, id: ConsId) -> Result<bool, String> {
+        match self.slots.get_mut(id.0 as usize) {
+            Some(ConsSlot::Occupied { marked, .. }) if !*marked => {
+                *marked = true;
+                Ok(true)
+            }
+            Some(ConsSlot::Occupied { .. }) => Ok(false),
+            Some(ConsSlot::Free { .. }) => Err(format!(
+                "internal compiler error: object refers to freed cons cell {}",
+                id.0
+            )),
+            None => Err(format!(
+                "internal compiler error: object refers to invalid cons cell {}",
+                id.0
+            )),
+        }
+    }
+
+    pub(crate) fn sweep(&mut self) -> usize {
         let mut freed = 0;
         for index in 0..self.slots.len() {
             let should_free =
@@ -299,11 +319,7 @@ impl ConsHeap {
             }
         }
         self.allocated -= freed;
-        Ok(CollectionStats {
-            allocated_before,
-            freed,
-            allocated_after: self.allocated,
-        })
+        freed
     }
 }
 

@@ -1,5 +1,8 @@
 use std::{fs, io, path::Path};
 
+mod newlib;
+pub(super) use newlib::{LIBC, LIBC_EARLY, LIBM};
+
 #[derive(Clone, Copy)]
 pub(super) struct EeObject {
     pub source: &'static str,
@@ -14,6 +17,7 @@ pub(super) struct EeBuild {
     pub defines: &'static [&'static str],
     pub compiler_flags: &'static str,
     pub debug_dir: Option<&'static str>,
+    pub debug_source_root: Option<&'static str>,
     pub assembler_flags: &'static str,
     pub compile_dir: &'static str,
     pub small_data: u8,
@@ -28,6 +32,7 @@ pub(super) const LIBDMA: EeBuild = EeBuild {
     defines: &[],
     compiler_flags: "",
     debug_dir: None,
+    debug_source_root: None,
     assembler_flags: "",
     compile_dir: "",
     small_data: 0,
@@ -60,6 +65,7 @@ pub(super) const LIBSCF: EeBuild = EeBuild {
     defines: &[],
     compiler_flags: "",
     debug_dir: None,
+    debug_source_root: None,
     assembler_flags: "",
     compile_dir: "",
     small_data: 0,
@@ -102,6 +108,7 @@ pub(super) const LIBMC: EeBuild = EeBuild {
     ],
     compiler_flags: "",
     debug_dir: None,
+    debug_source_root: None,
     assembler_flags: "",
     compile_dir: "build",
     small_data: 0,
@@ -143,6 +150,7 @@ pub(super) const LIBCDVD: EeBuild = EeBuild {
     ],
     compiler_flags: "-fno-strict-aliasing",
     debug_dir: None,
+    debug_source_root: None,
     assembler_flags: "",
     compile_dir: "build",
     small_data: 0,
@@ -187,6 +195,7 @@ pub(super) const LIBPAD: EeBuild = EeBuild {
     ],
     compiler_flags: "",
     debug_dir: None,
+    debug_source_root: None,
     assembler_flags: "",
     compile_dir: "",
     small_data: 0,
@@ -222,6 +231,7 @@ pub(super) const LIBSCEDEMO: EeBuild = EeBuild {
     defines: &[],
     compiler_flags: "",
     debug_dir: None,
+    debug_source_root: None,
     assembler_flags: "",
     compile_dir: "",
     small_data: 8,
@@ -318,6 +328,7 @@ pub(super) const LIBGRAPH: EeBuild = EeBuild {
     defines: &[],
     compiler_flags: "",
     debug_dir: None,
+    debug_source_root: None,
     assembler_flags: "",
     compile_dir: "",
     small_data: 0,
@@ -380,6 +391,7 @@ pub(super) const LIBGCC: EeBuild = EeBuild {
     ],
     compiler_flags: "-g1",
     debug_dir: Some("/usr/local/sce/ee/gcc/build/gcc"),
+    debug_source_root: None,
     assembler_flags: "-g",
     compile_dir: "",
     small_data: 0,
@@ -512,6 +524,9 @@ rule ee_compile
 rule ee_assemble
   command = "$ee_tool_dir/ee-as" $assembler_flags -G $small_data -mabi=eabi -o "$out" "$in"
   description = EE AS $out
+rule ee_assembly_source
+  command = cp "$in" "$out" $debug_paths
+  description = EE ASM SOURCE $out
 rule ee_archive
   command = rm -f "$out" && "$ee_tool_dir/ee-ar" rcs "$out" $in
   description = EE AR $out
@@ -565,19 +580,48 @@ rule ee_archive
             let mut debug_paths = String::new();
             if let Some(directory) = build.debug_dir {
                 let actual = build_dir.join(&source_workdir);
-                let name = source.debug_name.unwrap_or(&compile_name);
+                let (directory, name) = if let Some(prefix) = build.debug_source_root {
+                    (
+                        Path::new(directory).join(parent),
+                        format!(
+                            "{}{prefix}/{}",
+                            "../".repeat(parent.components().count()),
+                            source.source
+                        ),
+                    )
+                } else {
+                    (
+                        Path::new(directory).to_path_buf(),
+                        source.debug_name.unwrap_or(&compile_name).to_string(),
+                    )
+                };
                 debug_paths = format!(
                     "&& sed -i -e '/^[[:space:]]*\\.\\(file\\|stabs\\)/ {{ s|{actual}/|{directory}/|g; s|\"{compile_name}\"|\"{name}\"|g; }}' \"$build_dir/{assembly}\"",
                     actual = actual.display().to_string().trim_end_matches('/'),
                     assembly = assembly.display(),
+                    directory = directory.display(),
                 );
+            }
+            let is_assembly = source_path.extension().is_some_and(|ext| ext == "S");
+            let compile_rule = if is_assembly {
+                "ee_assembly_source"
+            } else {
+                "ee_compile"
+            };
+            let compile_tool = if is_assembly {
+                ""
+            } else {
+                " | $ee_tool_dir/cc1"
+            };
+            if is_assembly {
+                debug_paths = debug_paths.replace("/^[[:space:]]*\\.\\(file\\|stabs\\)/", "/^#/");
             }
             ninja.push_str(&format!(
                 "build {preprocessed}: ee_preprocess {source_dir}/{source_name} | {headers} $ee_tool_dir/cpp
   defines = {defines}
   source_dir = $build_dir/{preprocess_dir}
   source_name = {compile_name}
-build {assembly}: ee_compile {preprocessed} | $ee_tool_dir/cc1
+build {assembly}: {compile_rule} {preprocessed}{compile_tool}
   compiler_flags = {compiler_flags}
   debug_paths = {debug_paths}
   small_data = {small_data}

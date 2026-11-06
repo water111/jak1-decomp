@@ -4,6 +4,8 @@ use std::path::{Path, PathBuf};
 
 use crate::diagnostic::Diagnostic;
 pub use crate::diagnostic::{Diagnostic as CompilerMessage, DiagnosticLevel as MessageLevel};
+use crate::goos::Interpreter;
+use crate::type_system::{BUILTIN_FILE_ID, TypeSystem};
 
 // The Driver is the top-level compiler entry point.
 // The driver itself handles build ordering logic.
@@ -165,6 +167,8 @@ pub struct Driver {
     ids_by_path: BTreeMap<PathBuf, FileId>,
     reverse_dependencies: BTreeMap<FileId, BTreeSet<FileId>>,
     next_file_id: FileId,
+    goos: Interpreter,
+    types: TypeSystem,
 }
 
 impl Driver {
@@ -198,6 +202,10 @@ impl Driver {
             ids_by_path: BTreeMap::new(),
             reverse_dependencies: BTreeMap::new(),
             next_file_id: 0,
+            goos: Interpreter::new().map_err(|diagnostic| {
+                format!("could not initialize GOOS: {}", diagnostic.message)
+            })?,
+            types: TypeSystem::new(),
         };
 
         // add all source files
@@ -231,8 +239,27 @@ impl Driver {
         Ok(driver)
     }
 
+    pub fn goos(&self) -> &Interpreter {
+        &self.goos
+    }
+
+    pub fn goos_mut(&mut self) -> &mut Interpreter {
+        &mut self.goos
+    }
+
+    pub fn type_system(&self) -> &TypeSystem {
+        &self.types
+    }
+
+    pub fn type_system_mut(&mut self) -> &mut TypeSystem {
+        &mut self.types
+    }
+
     fn allocate_file_id(&mut self) -> Result<FileId, String> {
         let id = self.next_file_id;
+        if id == BUILTIN_FILE_ID {
+            return Err("project: exhausted source file IDs".to_owned());
+        }
         self.next_file_id = self
             .next_file_id
             .checked_add(1)
@@ -365,7 +392,7 @@ impl Driver {
             let output = match self.compile(&file, &dependency_ids) {
                 Ok(output) => output,
                 Err(messages) => {
-                    Self::print_messages(&file.path, &messages);
+                    self.print_messages(&file.path, &messages);
                     let message = messages
                         .iter()
                         .find(|message| message.level == MessageLevel::Error)
@@ -380,7 +407,7 @@ impl Driver {
                     ));
                 }
             };
-            Self::print_messages(&file.path, &output.messages);
+            self.print_messages(&file.path, &output.messages);
             if let Some(object) = output.object {
                 self.write_object(&file.path, &object)?;
             }
@@ -441,8 +468,8 @@ impl Driver {
     }
 
     // These three methods are the boundary that the parser/front end will fill in later.
-    fn remove_definitions(&mut self, _source_file: &SourceFile) {
-        // TODO
+    fn remove_definitions(&mut self, source_file: &SourceFile) {
+        self.types.remove_definitions(source_file.id);
     }
 
     fn compile(
@@ -475,8 +502,17 @@ impl Driver {
             .map_err(|error| format!("{}: {error}", output_path.display()))
     }
 
-    fn print_messages(source_path: &Path, messages: &[CompilerMessage]) {
+    fn print_messages(&self, source_path: &Path, messages: &[CompilerMessage]) {
         for message in messages {
+            if message.span.is_some() {
+                match self.goos.parser.sources.render_diagnostic(message) {
+                    Ok(rendered) => {
+                        eprintln!("{rendered}");
+                        continue;
+                    }
+                    Err(error) => eprintln!("{error}"),
+                }
+            }
             let level = match message.level {
                 MessageLevel::Warning => "warning",
                 MessageLevel::Error => "error",
@@ -565,6 +601,8 @@ fn validate_acyclic(files: &BTreeMap<FileId, SourceFile>) -> Result<(), String> 
 mod tests {
     use super::*;
     use std::time::{SystemTime, UNIX_EPOCH};
+
+    use crate::type_system::{TypeDefinitionRequest, TypeKind, TypeLayout, Visibility};
 
     struct TestDirectory(PathBuf);
 
@@ -706,6 +744,37 @@ mod tests {
             dirty_paths(&driver),
             ["a.gc", "b.gc"].map(PathBuf::from).into()
         );
+    }
+
+    #[test]
+    fn invalidation_removes_file_owned_type_records_but_keeps_type_ids() {
+        let directory = TestDirectory::new();
+        directory.write("a.gc", "a");
+        let mut driver = directory.driver("file a.gc\n");
+        driver.rebuild_dirty().unwrap();
+        let file = driver.ids_by_path[Path::new("a.gc")];
+        let visibility = Visibility::new(file, []);
+        let structure = driver.types.intern_type("structure");
+        let transient = driver.types.intern_type("transient");
+        let spec = driver.types.named_type_spec("transient");
+        driver
+            .types
+            .define_type(
+                file,
+                TypeDefinitionRequest::new(
+                    transient,
+                    Some(structure),
+                    TypeLayout::structure(TypeKind::Structure, false),
+                ),
+                &visibility,
+            )
+            .unwrap();
+
+        driver.mark_dirty("a.gc").unwrap();
+        driver.rebuild_dirty().unwrap();
+        assert!(driver.types.definition(transient, &visibility).is_err());
+        assert_eq!(driver.types.intern_type("transient"), transient);
+        assert_eq!(driver.types.named_type_spec("transient"), spec);
     }
 
     #[test]
