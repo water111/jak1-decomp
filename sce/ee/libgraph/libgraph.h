@@ -1,6 +1,10 @@
 #ifndef SCE_EE_LIBGRAPH_LIBGRAPH_H
 #define SCE_EE_LIBGRAPH_LIBGRAPH_H
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #define SCE_GS_PSMCT32 0
 #define SCE_GS_PSMCT24 1
 #define SCE_GS_PSMCT16 2
@@ -24,8 +28,37 @@ typedef struct {
   int callback_id;
 } sceGsGParam __attribute__((aligned(16)));
 
-typedef struct {
-  GsWord pmode, smode2, dispfb, display, bgcolor;
+typedef struct GsPmode {
+  unsigned EN1 : 1, EN2 : 1, CRTMD : 3, MMOD : 1, AMOD : 1, SLBG : 1, ALP : 8, reserved : 16;
+  unsigned reserved_high;
+} GsPmode;
+
+typedef struct GsSmode2 {
+  unsigned INT : 1, FFMD : 1, DPMS : 2, reserved : 28;
+  unsigned reserved_high;
+} GsSmode2;
+
+typedef struct GsDispfb {
+  unsigned FBP : 9, FBW : 6, PSM : 5, reserved_low : 12;
+  unsigned DBX : 11, DBY : 11, reserved_high : 10;
+} GsDispfb;
+
+typedef struct GsDisplay {
+  unsigned DX : 12, DY : 11, MAGH : 4, MAGV : 2, reserved_low : 3;
+  unsigned DW : 12, DH : 11, reserved_high : 9;
+} GsDisplay;
+
+typedef struct GsBgcolor {
+  unsigned char R, G, B, reserved[5];
+} GsBgcolor;
+
+// Display environment passed to libgraph.
+typedef struct sceGsDispEnv {
+  GsPmode pmode;
+  GsSmode2 smode2;
+  GsDispfb dispfb;
+  GsDisplay display;
+  GsBgcolor bgcolor;
 } sceGsDispEnv;
 
 typedef struct {
@@ -68,5 +101,15 @@ int sceGsSetDefLoadImage(sceGsLoadImage* packet,
                          short h);
 int sceGsExecLoadImage(GsQuad* packet, GsQuad* source);
 int sceGsExecStoreImage(GsQuad* packet, GsQuad* destination);
+
+#define GS_REGISTER_BASE 0x12000000
+#define GS_INTERLACED 1
+#define GS_NTSC 2
+#define GS_PAL 3
+#define GS_PSMCT32 0
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

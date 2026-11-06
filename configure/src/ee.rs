@@ -1,5 +1,9 @@
 use std::{fs, io, path::Path};
 
+mod kernel;
+pub(super) use kernel::KERNEL;
+mod link;
+pub(super) use link::ninja_section as kernel_link;
 mod libkernl;
 pub(super) use libkernl::LIBKERNL;
 mod newlib;
@@ -547,10 +551,10 @@ pub(super) fn ninja_section(
 ee_tool_dir = $repo_root/toolchain/bin/ee
 
 rule ee_preprocess
-  command = cd "$source_dir" && "$ee_tool_dir/cpp" -nostdinc -I"$repo_root" $preprocessor_flags $defines "$source_name" "$build_dir/$out"
+  command = cd "$source_dir" && "$ee_tool_dir/cpp" -nostdinc -I"$repo_root" $preprocessor_flags $defines "$source_name" "$build_dir/$out" $preprocessor_paths
   description = EE CPP $out
 rule ee_compile
-  command = cd "$build_dir/$source_workdir" && "$ee_tool_dir/cc1" -quiet -O2 $compiler_flags -G $small_data "$source_name" -o "$build_dir/$out" $debug_paths
+  command = cd "$build_dir/$source_workdir" && "$ee_tool_dir/$compiler" -quiet -O2 $compiler_flags -G $small_data "$source_name" -o "$build_dir/$out" $debug_paths
   description = EE CC $out
 rule ee_assemble
   command = "$ee_tool_dir/as" $assembler_flags -G $small_data -mabi=eabi -o "$out" "$in"
@@ -641,26 +645,42 @@ rule ee_archive
                 );
             }
             let is_assembly = source_path.extension().is_some_and(|ext| ext == "S");
+            let compiler = if source_path.extension().is_some_and(|ext| ext == "cpp") {
+                "cc1plus"
+            } else {
+                "cc1"
+            };
             let compile_rule = if is_assembly {
                 "ee_assembly_source"
             } else {
                 "ee_compile"
             };
             let compile_tool = if is_assembly {
-                ""
+                String::new()
             } else {
-                " | $ee_tool_dir/cc1"
+                format!(" | $ee_tool_dir/{compiler}")
             };
             if is_assembly {
                 debug_paths = debug_paths.replace("/^[[:space:]]*\\.\\(file\\|stabs\\)/", "/^#/");
             }
+            let preprocessor_paths = if compiler == "cc1plus" {
+                format!(
+                    "&& sed -i -e '/^#/s|{}/||g' \"$build_dir/{}\"",
+                    repo_root.join(build.source_dir).display(),
+                    preprocessed.display()
+                )
+            } else {
+                String::new()
+            };
             ninja.push_str(&format!(
                 "build {preprocessed}: ee_preprocess {source_dir}/{source_name} | {headers} $ee_tool_dir/cpp
   defines = {defines}
   preprocessor_flags = {preprocessor_flags}
+  preprocessor_paths = {preprocessor_paths}
   source_dir = $build_dir/{preprocess_dir}
   source_name = {compile_name}
 build {assembly}: {compile_rule} {preprocessed}{compile_tool}
+  compiler = {compiler}
   compiler_flags = {compiler_flags}
   debug_paths = {debug_paths}
   small_data = {small_data}

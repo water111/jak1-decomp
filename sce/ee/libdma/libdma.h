@@ -62,4 +62,6 @@ int sceDmaRestart(sceDmaChan* channel, unsigned chcr);
 }
 #endif
 
+#define EE_DMA_VIF1 ((sceDmaChan*)0x10009000)
+
 #endif

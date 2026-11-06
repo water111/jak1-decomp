@@ -1,6 +1,12 @@
 #ifndef SCE_EE_LIBKERNL_SIF_H
 #define SCE_EE_LIBKERNL_SIF_H
 
+#define SIF_RPCM_NOWAIT 1
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 typedef struct {
   unsigned packet_size : 8;
   unsigned data_size : 24;
@@ -45,5 +51,14 @@ int sceSifDmaStat(unsigned id);
 
 void sceSifRemoveCmdHandler(unsigned command);
 void sceSifAddCmdHandler(unsigned command, void (*handler)(void*, void*), void* argument);
+
+int sceSifRebootIop(const char*);
+int sceSifSyncIop(void);
+int sceSifLoadModule(const char*, int, const char*);
+int sceFsReset(void);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

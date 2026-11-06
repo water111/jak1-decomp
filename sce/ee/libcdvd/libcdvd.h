@@ -1,6 +1,10 @@
 #ifndef SCE_EE_LIBCDVD_LIBCDVD_H
 #define SCE_EE_LIBCDVD_LIBCDVD_H
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #define SCECdSecS2048 0
 #define SCECdSecS2328 1
 #define SCECdSecS2340 2
@@ -86,5 +90,12 @@ int sceCdStream(unsigned sector,
                 void* buffer,
                 unsigned command,
                 const sceCdRMode* mode);
+
+#define SCECdCDROM 1
+#define SCECdDVD 2
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

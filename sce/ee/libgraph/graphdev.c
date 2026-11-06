@@ -57,16 +57,16 @@ void sceGsResetPath(void) {
 #ifdef F_putdispenv
 void sceGsPutDispEnv(sceGsDispEnv* env) {
   if (sceGsGetGParam()->version == 1) {
-    (*GS_PMODE) = env->pmode;
-    (*GS_DISPFB1) = env->dispfb;
-    (*GS_DISPLAY1) = env->display;
-    (*GS_EXTDATA) = env->bgcolor;
+    (*GS_PMODE) = *(GsWord*)&env->pmode;
+    (*GS_DISPFB1) = *(GsWord*)&env->dispfb;
+    (*GS_DISPLAY1) = *(GsWord*)&env->display;
+    (*GS_EXTDATA) = *(GsWord*)&env->bgcolor;
   } else {
-    (*GS_PMODE) = env->pmode;
-    (*GS_SMODE2) = env->smode2;
-    (*GS_DISPFB2) = env->dispfb;
-    (*GS_DISPLAY2) = env->display;
-    (*GS_BGCOLOR) = env->bgcolor;
+    (*GS_PMODE) = *(GsWord*)&env->pmode;
+    (*GS_SMODE2) = *(GsWord*)&env->smode2;
+    (*GS_DISPFB2) = *(GsWord*)&env->dispfb;
+    (*GS_DISPLAY2) = *(GsWord*)&env->display;
+    (*GS_BGCOLOR) = *(GsWord*)&env->bgcolor;
   }
 }
 #endif

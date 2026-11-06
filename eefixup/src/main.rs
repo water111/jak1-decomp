@@ -165,10 +165,47 @@ fn add_file_symbol(raw: &[u8], source: &str, include: &str) -> Vec<u8> {
     result
 }
 
+fn normalize_frame_source(raw: &mut [u8], source: &str) {
+    let section_offset = word(raw, 32);
+    let names_header = section_offset + half(raw, 50) * 40;
+    let names_offset = word(raw, names_header + 16);
+    for i in 0..half(raw, 48) {
+        let header = section_offset + i * 40;
+        let name = string(raw, names_offset + word(raw, header));
+        let offset = word(raw, header + 16);
+        let size = word(raw, header + 20);
+        let (start, length) = match name {
+            b".mdebug" => (word(raw, offset + 60), word(raw, offset + 56)),
+            b".strtab" => (offset, size),
+            _ => continue,
+        };
+        for entry in raw[start..start + length].split_mut(|&byte| byte == 0) {
+            if entry.len() == 15
+                && entry.starts_with(b"/tmp/cc")
+                && entry.ends_with(b".c")
+                && entry[7..13].iter().all(u8::is_ascii_alphanumeric)
+            {
+                entry.copy_from_slice(source.as_bytes());
+            }
+        }
+    }
+}
+
 fn main() -> io::Result<()> {
     let args: Vec<_> = env::args().skip(1).collect();
+    if args.len() == 4 && args[0] == "--frame-source" {
+        if args[3].len() != 15 {
+            return Err(io::Error::other(
+                "Expected a 15-byte collect2 source filename",
+            ));
+        }
+        let mut raw = fs::read(&args[1])?;
+        normalize_frame_source(&mut raw, &args[3]);
+        return fs::write(&args[2], raw);
+    }
     if args.len() != 4 {
         eprintln!("Usage: eefixup <input.o> <output.o> <source-name> <include-name>");
+        eprintln!("       eefixup --frame-source <input.elf> <output.elf> <source-name>");
         std::process::exit(1);
     }
     let raw = fs::read(&args[0])?;

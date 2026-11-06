@@ -1,6 +1,10 @@
 #ifndef SCE_EE_LIBPAD_LIBPAD_H
 #define SCE_EE_LIBPAD_LIBPAD_H
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #define scePadStateDiscon 0
 #define scePadStateFindPad 1
 #define scePadStateFindCTP1 2
@@ -42,5 +46,11 @@ int scePadEnterPressMode(int port, int slot);
 int scePadExitPressMode(int port, int slot);
 int scePadGetSlotMax(int port);
 int scePadSetWarningLevel(int level);
+
+#define SCE_PAD_DMA_BUFFER_SIZE 256
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

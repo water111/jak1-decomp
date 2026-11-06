@@ -1,6 +1,10 @@
 #ifndef SCE_EE_LIBKERNL_EEKERNEL_H
 #define SCE_EE_LIBKERNL_EEKERNEL_H
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 void GetOsdConfigParam(unsigned* config);
 int GetOsdConfigParam2(void* config, int size, int offset);
 
@@ -50,5 +54,20 @@ int ReferThreadStatus(int id, Thread* thread);
 int CreateThread(Thread* thread);
 int StartThread(int id, void* argument);
 int ChangeThreadPriority(int id, int priority);
+
+#define EE_UNCACHED_MASK 0x20000000
+
+enum CacheOperation {
+  WRITEBACK_DCACHE = 0,
+  INVALIDATE_ICACHE = 2
+};
+
+int EnableIntc(int);
+int AddIntcHandler(int, int (*)(int), int);
+unsigned int SetDebugHandler(int, unsigned int);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif
