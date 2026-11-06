@@ -13,12 +13,12 @@ use std::path::{Path, PathBuf};
 use crate::diagnostic::Diagnostic;
 use crate::object::SymbolMap;
 use crate::object::{
-    BuiltinId, ConsId, EnvironmentId, Object, ProcedureId, StringHashTableId, SymbolId, Value,
+    ConsId, EnvironmentId, Object, ProcedureId, StringHashTableId, SymbolId, Value,
 };
 use crate::parse::Parser;
 use crate::span::SpanInfo;
 
-use builtins::BUILTINS;
+use builtins::{BUILTIN_FORMS, BuiltinForm};
 
 const STANDARD_LIBRARY: &str = include_str!("../goos/goos-lib.gs");
 
@@ -233,6 +233,7 @@ pub struct Interpreter {
     procedures: Arena<Procedure>,
     environments: Arena<Environment>,
     hash_tables: Arena<HashMap<String, Object>>,
+    builtin_forms: SymbolMap<BuiltinForm>,
     core: CoreSymbols,
     global_environment: EnvironmentId,
     goal_environment: EnvironmentId,
@@ -272,6 +273,7 @@ impl Interpreter {
             procedures: Arena::default(),
             environments,
             hash_tables: Arena::default(),
+            builtin_forms: SymbolMap::default(),
             core,
             global_environment,
             goal_environment,
@@ -316,12 +318,9 @@ impl Interpreter {
             Object::environment(self.goal_environment, None),
         )?;
 
-        for (index, builtin) in BUILTINS.iter().enumerate() {
-            let id = BuiltinId(
-                u16::try_from(index).map_err(|_| Diagnostic::error("exhausted builtin IDs"))?,
-            );
-            let name = self.intern(builtin.0);
-            self.define_in(self.global_environment, name, Object::builtin(id, None))?;
+        for &(name, function) in BUILTIN_FORMS {
+            let name = self.intern(name);
+            self.builtin_forms.insert(name, function);
         }
         Ok(())
     }
@@ -676,7 +675,6 @@ fn trace_object(object: &Object, pending: &mut Vec<TraceTarget>) {
         | Value::Symbol(_)
         | Value::Float(_)
         | Value::Integer(_)
-        | Value::Builtin(_)
         | Value::EmptyList => {}
     }
 }
@@ -707,10 +705,7 @@ mod tests {
                 .unwrap()
                 .is_none()
         );
-        assert!(matches!(
-            goos.global_binding("load-file").unwrap().unwrap().value,
-            Value::Builtin(_)
-        ));
+        assert!(goos.global_binding("load-file").unwrap().is_none());
         assert_eq!(
             integer(
                 goos.eval_text("(defun square (x) (* x x)) (square 6)")
@@ -720,8 +715,30 @@ mod tests {
         );
         assert_eq!(integer(goos.eval_text("(length '(1 2 3 4))").unwrap()), 4);
         assert_eq!(
-            integer(goos.eval_text("(fold-left + 0 '(1 2 3 4))").unwrap()),
+            integer(
+                goos.eval_text("(fold-left (lambda (a b) (+ a b)) 0 '(1 2 3 4))")
+                    .unwrap()
+            ),
             10
+        );
+    }
+
+    #[test]
+    fn builtins_are_forms_not_values() {
+        let mut goos = Interpreter::new().unwrap();
+
+        assert_eq!(integer(goos.eval_text("(+ 2 3)").unwrap()), 5);
+        assert!(
+            goos.eval_text("+")
+                .unwrap_err()
+                .message
+                .contains("not defined")
+        );
+        assert!(
+            goos.eval_text("(define add +)")
+                .unwrap_err()
+                .message
+                .contains("not defined")
         );
     }
 

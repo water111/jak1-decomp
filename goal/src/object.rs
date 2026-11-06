@@ -18,9 +18,6 @@ pub struct EnvironmentId(pub u32);
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub struct StringHashTableId(pub u32);
 
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-pub struct BuiltinId(pub u16);
-
 #[derive(Clone, Debug, PartialEq)]
 pub struct Object {
     pub span: Option<SpanInfo>,
@@ -39,7 +36,6 @@ pub enum Value {
     Macro(ProcedureId),
     Environment(EnvironmentId),
     StringHashTable(StringHashTableId),
-    Builtin(BuiltinId),
     EmptyList,
 }
 
@@ -90,10 +86,6 @@ impl Object {
 
     pub fn string_hash_table(value: StringHashTableId, span: Option<SpanInfo>) -> Self {
         Self::new(Value::StringHashTable(value), span)
-    }
-
-    pub fn builtin(value: BuiltinId, span: Option<SpanInfo>) -> Self {
-        Self::new(Value::Builtin(value), span)
     }
 }
 
@@ -339,7 +331,6 @@ fn enqueue_pairs(object: &Object, pending: &mut Vec<ConsId>) {
         | Value::Macro(_)
         | Value::Environment(_)
         | Value::StringHashTable(_)
-        | Value::Builtin(_)
         | Value::EmptyList => {}
     }
 }
