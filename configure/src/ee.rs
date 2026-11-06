@@ -1,7 +1,9 @@
 use std::{fs, io, path::Path};
 
 mod newlib;
+mod startup;
 pub(super) use newlib::{LIBC, LIBC_EARLY, LIBM};
+pub(super) use startup::STARTUP;
 
 #[derive(Clone, Copy)]
 pub(super) struct EeObject {
@@ -15,6 +17,7 @@ pub(super) struct EeBuild {
     pub source_dir: &'static str,
     pub output_dir: &'static str,
     pub defines: &'static [&'static str],
+    pub preprocessor_flags: &'static str,
     pub compiler_flags: &'static str,
     pub debug_dir: Option<&'static str>,
     pub debug_source_root: Option<&'static str>,
@@ -30,6 +33,7 @@ pub(super) const LIBDMA: EeBuild = EeBuild {
     source_dir: "sce/ee/libdma",
     output_dir: "sce/ee/libdma",
     defines: &[],
+    preprocessor_flags: "",
     compiler_flags: "",
     debug_dir: None,
     debug_source_root: None,
@@ -63,6 +67,7 @@ pub(super) const LIBSCF: EeBuild = EeBuild {
     source_dir: "sce/ee/libscf",
     output_dir: "sce/ee/libscf",
     defines: &[],
+    preprocessor_flags: "",
     compiler_flags: "",
     debug_dir: None,
     debug_source_root: None,
@@ -106,6 +111,7 @@ pub(super) const LIBMC: EeBuild = EeBuild {
         "__SIZE_TYPE__=unsigned int",
         "__PTRDIFF_TYPE__=int",
     ],
+    preprocessor_flags: "",
     compiler_flags: "",
     debug_dir: None,
     debug_source_root: None,
@@ -148,6 +154,7 @@ pub(super) const LIBCDVD: EeBuild = EeBuild {
         "__SIZE_TYPE__=unsigned int",
         "__PTRDIFF_TYPE__=int",
     ],
+    preprocessor_flags: "",
     compiler_flags: "-fno-strict-aliasing",
     debug_dir: None,
     debug_source_root: None,
@@ -193,6 +200,7 @@ pub(super) const LIBPAD: EeBuild = EeBuild {
         "__SIZE_TYPE__=unsigned int",
         "__PTRDIFF_TYPE__=int",
     ],
+    preprocessor_flags: "",
     compiler_flags: "",
     debug_dir: None,
     debug_source_root: None,
@@ -229,6 +237,7 @@ pub(super) const LIBSCEDEMO: EeBuild = EeBuild {
     source_dir: "sce/ee/libscedemo",
     output_dir: "sce/ee/libscedemo",
     defines: &[],
+    preprocessor_flags: "",
     compiler_flags: "",
     debug_dir: None,
     debug_source_root: None,
@@ -326,6 +335,7 @@ pub(super) const LIBGRAPH: EeBuild = EeBuild {
     source_dir: "sce/ee/libgraph",
     output_dir: "sce/ee/libgraph",
     defines: &[],
+    preprocessor_flags: "",
     compiler_flags: "",
     debug_dir: None,
     debug_source_root: None,
@@ -389,6 +399,7 @@ pub(super) const LIBGCC: EeBuild = EeBuild {
         "CROSS_COMPILE",
         "inhibit_libc",
     ],
+    preprocessor_flags: "",
     compiler_flags: "-g1",
     debug_dir: Some("/usr/local/sce/ee/gcc/build/gcc"),
     debug_source_root: None,
@@ -516,13 +527,13 @@ pub(super) fn ninja_section(
 ee_tool_dir = $repo_root/toolchain/bin/ee
 
 rule ee_preprocess
-  command = cd "$source_dir" && "$ee_tool_dir/cpp" -nostdinc -I"$repo_root" $defines "$source_name" "$build_dir/$out"
+  command = cd "$source_dir" && "$ee_tool_dir/cpp" -nostdinc -I"$repo_root" $preprocessor_flags $defines "$source_name" "$build_dir/$out"
   description = EE CPP $out
 rule ee_compile
   command = cd "$build_dir/$source_workdir" && "$ee_tool_dir/cc1" -quiet -O2 $compiler_flags -G $small_data "$source_name" -o "$build_dir/$out" $debug_paths
   description = EE CC $out
 rule ee_assemble
-  command = "$ee_tool_dir/ee-as" $assembler_flags -G $small_data -mabi=eabi -o "$out" "$in"
+  command = "$ee_tool_dir/as" $assembler_flags -G $small_data -mabi=eabi -o "$out" "$in"
   description = EE AS $out
 rule ee_assembly_source
   command = cp "$in" "$out" $debug_paths
@@ -619,6 +630,7 @@ rule ee_archive
             ninja.push_str(&format!(
                 "build {preprocessed}: ee_preprocess {source_dir}/{source_name} | {headers} $ee_tool_dir/cpp
   defines = {defines}
+  preprocessor_flags = {preprocessor_flags}
   source_dir = $build_dir/{preprocess_dir}
   source_name = {compile_name}
 build {assembly}: {compile_rule} {preprocessed}{compile_tool}
@@ -627,10 +639,11 @@ build {assembly}: {compile_rule} {preprocessed}{compile_tool}
   small_data = {small_data}
   source_workdir = {source_workdir}
   source_name = {compile_name}
-build {object}: ee_assemble {assembly} | $ee_tool_dir/ee-as
+build {object}: ee_assemble {assembly} | $ee_tool_dir/as
   assembler_flags = {assembler_flags}
   small_data = {small_data}
 ",
+                preprocessor_flags = build.preprocessor_flags,
                 compiler_flags = build.compiler_flags,
                 assembler_flags = build.assembler_flags,
                 small_data = build.small_data,

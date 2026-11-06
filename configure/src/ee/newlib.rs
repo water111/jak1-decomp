@@ -343,6 +343,7 @@ pub(crate) const LIBC: EeBuild = EeBuild {
         "_COMPILING_NEWLIB",
         "MISSING_SYSCALL_NAMES",
     ],
+    preprocessor_flags: "",
     compiler_flags: "-g -fno-builtin",
     debug_dir: Some("/usr/local/sce/ee/gcc/build/ee/newlib"),
     debug_source_root: Some("../../../src/newlib"),

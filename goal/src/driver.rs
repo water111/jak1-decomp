@@ -602,7 +602,7 @@ mod tests {
     use super::*;
     use std::time::{SystemTime, UNIX_EPOCH};
 
-    use crate::type_system::{TypeDefinitionRequest, TypeKind, TypeLayout, Visibility};
+    use crate::type_system::{TypeDefinition, TypeKind, TypeLayout, Visibility};
 
     struct TestDirectory(PathBuf);
 
@@ -756,12 +756,12 @@ mod tests {
         let visibility = Visibility::new(file, []);
         let structure = driver.types.intern_type("structure");
         let transient = driver.types.intern_type("transient");
-        let spec = driver.types.named_type_spec("transient");
+        let spec = driver.types.intern_type_spec("transient");
         driver
             .types
             .define_type(
                 file,
-                TypeDefinitionRequest::new(
+                TypeDefinition::new(
                     transient,
                     Some(structure),
                     TypeLayout::structure(TypeKind::Structure, false),
@@ -774,7 +774,7 @@ mod tests {
         driver.rebuild_dirty().unwrap();
         assert!(driver.types.definition(transient, &visibility).is_err());
         assert_eq!(driver.types.intern_type("transient"), transient);
-        assert_eq!(driver.types.named_type_spec("transient"), spec);
+        assert_eq!(driver.types.intern_type_spec("transient"), spec);
     }
 
     #[test]

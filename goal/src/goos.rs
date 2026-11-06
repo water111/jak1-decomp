@@ -18,7 +18,7 @@ use crate::object::{
 use crate::parse::Parser;
 use crate::span::SpanInfo;
 
-use builtins::Builtin;
+use builtins::BUILTINS;
 
 const STANDARD_LIBRARY: &str = include_str!("../goos/goos-lib.gs");
 
@@ -316,11 +316,11 @@ impl Interpreter {
             Object::environment(self.goal_environment, None),
         )?;
 
-        for (index, builtin) in Builtin::ALL.iter().enumerate() {
+        for (index, builtin) in BUILTINS.iter().enumerate() {
             let id = BuiltinId(
                 u16::try_from(index).map_err(|_| Diagnostic::error("exhausted builtin IDs"))?,
             );
-            let name = self.intern(builtin.name());
+            let name = self.intern(builtin.0);
             self.define_in(self.global_environment, name, Object::builtin(id, None))?;
         }
         Ok(())

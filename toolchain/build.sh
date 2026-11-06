@@ -78,14 +78,15 @@ echo 'Building EE GCC'
 AS="$BUILD/build/gas/as-new" "$BUILD/src/gcc/configure" \
     --host=i686-pc-linux-gnu --target=ee --with-gnu-as --with-gnu-ld \
     --enable-c-cpplib --enable-languages=c,c++ --prefix="$BUILD/install"
-make -j"$JOBS" cc1 cc1plus cpp CFLAGS="$CFLAGS" \
+make -j"$JOBS" cc1 cc1plus cpp xgcc collect2 CFLAGS="$CFLAGS" \
     BISON="$BUILD/build/bison/bison" MAKEINFO=true
 
 mkdir -p "$OUT/ee"
-cp cc1 cc1plus cpp "$OUT/ee/"
-cp "$BUILD/build/gas/as-new" "$OUT/ee/ee-as"
-cp "$BUILD/build/ld/ld-new" "$OUT/ee/ee-ld"
-cp "$BUILD/build/binutils/nm-new" "$OUT/ee/ee-nm"
+cp cc1 cc1plus cpp collect2 "$OUT/ee/"
+cp xgcc "$OUT/ee/ee-gcc"
+cp "$BUILD/build/gas/as-new" "$OUT/ee/as"
+cp "$BUILD/build/ld/ld-new" "$OUT/ee/ld"
+cp "$BUILD/build/binutils/nm-new" "$OUT/ee/nm"
 for tool in ar objcopy objdump; do
     cp "$BUILD/build/binutils/$tool" "$OUT/ee/ee-$tool"
 done
