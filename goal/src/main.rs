@@ -1,42 +1,64 @@
 use std::env;
+use std::fs;
 use std::io::{self, Read};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use goal::driver::Driver;
 
 fn usage(program: &str) {
-    eprintln!("usage: {program} <project-file> <build-directory> [--repl]");
+    eprintln!(
+        "usage:\n  {program} <project-file> <build-directory> [--repl]\n  {program} unpack <archive.CGO|DGO> <output-directory>\n  {program} disassemble <object.o> <output.asm>"
+    );
 }
 
 fn run() -> Result<(), String> {
-    let mut arguments = env::args();
-    let program = arguments.next().unwrap_or_else(|| "goal".to_owned());
-    let Some(project_file) = arguments.next() else {
-        usage(&program);
-        return Err("missing project file".to_owned());
-    };
-    let Some(build_directory) = arguments.next() else {
-        usage(&program);
-        return Err("missing build directory".to_owned());
-    };
+    let arguments: Vec<_> = env::args().collect();
+    let program = arguments.first().map_or("goal", String::as_str);
+    match arguments.get(1).map(String::as_str) {
+        Some("unpack") => match arguments.as_slice() {
+            [_, _, archive, output] => {
+                let paths = goal::dgo::unpack_file(Path::new(archive), Path::new(output))?;
+                println!("unpacked {} objects", paths.len());
+                Ok(())
+            }
+            _ => {
+                usage(program);
+                Err("unpack expects an archive and output directory".to_owned())
+            }
+        },
+        Some("disassemble") => match arguments.as_slice() {
+            [_, _, object, output] => {
+                let bytes = fs::read(object)
+                    .map_err(|error| format!("could not read `{object}`: {error}"))?;
+                let assembly = goal::disassemble::disassemble_object(&bytes, object)?;
+                fs::write(output, assembly)
+                    .map_err(|error| format!("could not write `{output}`: {error}"))
+            }
+            _ => {
+                usage(program);
+                Err("disassemble expects an object and output file".to_owned())
+            }
+        },
+        _ => run_compiler(program, &arguments[1..]),
+    }
+}
 
-    let repl = match arguments.next().as_deref() {
+fn run_compiler(program: &str, arguments: &[String]) -> Result<(), String> {
+    let ([project_file, build_directory] | [project_file, build_directory, _]) = arguments else {
+        usage(program);
+        return Err("missing project file or build directory".to_owned());
+    };
+    let repl = match arguments.get(2).map(String::as_str) {
         None => false,
         Some("--repl") => true,
         Some(argument) => {
-            usage(&program);
+            usage(program);
             return Err(format!("unknown argument `{argument}`"));
         }
     };
-    if arguments.next().is_some() {
-        usage(&program);
-        return Err("too many arguments".to_owned());
-    }
-
     let mut driver = Driver::load(PathBuf::from(project_file), PathBuf::from(build_directory))?;
     driver.rebuild_dirty()?;
-
     if repl {
         let mut input = String::new();
         io::stdin()
@@ -44,7 +66,6 @@ fn run() -> Result<(), String> {
             .map_err(|error| format!("could not read REPL input: {error}"))?;
         driver.repl_compile(&input)?;
     }
-
     Ok(())
 }
 

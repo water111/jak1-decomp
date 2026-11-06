@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::fmt;
 use std::hash::{BuildHasherDefault, Hasher};
 
 use crate::span::SpanInfo;
@@ -37,6 +38,39 @@ pub enum Value {
     Environment(EnvironmentId),
     StringHashTable(StringHashTableId),
     EmptyList,
+}
+
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum ObjectKind {
+    Pair,
+    String,
+    Symbol,
+    Float,
+    Integer,
+    Array,
+    Lambda,
+    Macro,
+    Environment,
+    StringHashTable,
+    EmptyList,
+}
+
+impl fmt::Display for ObjectKind {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(match self {
+            Self::Pair => "pair",
+            Self::String => "string",
+            Self::Symbol => "symbol",
+            Self::Float => "float",
+            Self::Integer => "integer",
+            Self::Array => "array",
+            Self::Lambda => "lambda",
+            Self::Macro => "macro",
+            Self::Environment => "environment",
+            Self::StringHashTable => "string hash table",
+            Self::EmptyList => "empty list",
+        })
+    }
 }
 
 impl Object {
@@ -86,6 +120,22 @@ impl Object {
 
     pub fn string_hash_table(value: StringHashTableId, span: Option<SpanInfo>) -> Self {
         Self::new(Value::StringHashTable(value), span)
+    }
+
+    pub fn kind(&self) -> ObjectKind {
+        match &self.value {
+            Value::Pair(_) => ObjectKind::Pair,
+            Value::String(_) => ObjectKind::String,
+            Value::Symbol(_) => ObjectKind::Symbol,
+            Value::Float(_) => ObjectKind::Float,
+            Value::Integer(_) => ObjectKind::Integer,
+            Value::Array(_) => ObjectKind::Array,
+            Value::Lambda(_) => ObjectKind::Lambda,
+            Value::Macro(_) => ObjectKind::Macro,
+            Value::Environment(_) => ObjectKind::Environment,
+            Value::StringHashTable(_) => ObjectKind::StringHashTable,
+            Value::EmptyList => ObjectKind::EmptyList,
+        }
     }
 }
 

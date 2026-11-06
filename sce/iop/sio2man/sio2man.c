@@ -9,7 +9,11 @@
 #include "sce/iop/thbase/thread.h"
 #include "sce/iop/thevent/thevent.h"
 
-// SIO2 Registers
+#if SIO2MAN_VERSION >= 0x0205
+#include "sce/iop/thsemap/thsemap.h"
+#endif
+
+#define SIO2_EVENT_SEMA 0x4000
 #define SIO2_EVENT_PAD_INIT 0x0001
 #define SIO2_EVENT_PAD_READY 0x0002
 #define SIO2_EVENT_MC_INIT 0x0004
@@ -47,9 +51,19 @@
 #define REG32(address) (*(volatile unsigned int*)(address))
 #define REG8(address) (*(unsigned char*)(address))
 
+#if SIO2MAN_VERSION == 0x0204
 char sio2_build_id[16] = "PsIIsio2man 2200";
-struct ModuleInfo Module = {"sio2man", 0x0204};
+#elif SIO2MAN_VERSION == 0x0205
+char sio2_build_id[16] = "PsIIsio2man 2400";
+#else
+char sio2_build_id[16] = "PsIIsio2man 2700";
+#endif
+struct ModuleInfo Module = {"sio2man", SIO2MAN_VERSION};
 static int initialized = 0;
+
+#if SIO2MAN_VERSION >= 0x0205
+static int transfer_sema;
+#endif
 
 static struct {
   int reserved;
@@ -65,8 +79,12 @@ static struct {
 
 extern int sio2man_stub[];
 
+#if SIO2MAN_VERSION == 0x0204
 void sio2_debug(const char* format, ...) {
 }
+#else
+#define sio2_debug printf
+#endif
 
 // Register read/writes.
 
@@ -193,10 +211,23 @@ void sio2_read_transfer_result(struct Sio2Transfer* transfer) {
 
 void sio2_transfer_thread(void) {
   unsigned int bits;
+#if SIO2MAN_VERSION >= 0x0205
+  struct SemaInfo sema;
+#endif
   for (;;) {
     // Wait for a user to initialize and set the ready bit for that user.
+#if SIO2MAN_VERSION >= 0x0205
+    WaitEventFlag(state.event, SIO2_EVENT_INIT_MASK | SIO2_EVENT_SEMA, EW_OR, &bits);
+    if (bits & SIO2_EVENT_SEMA) {
+      ReferSemaStatus(transfer_sema, &sema);
+      if (!sema.currentCount)
+        ClearEventFlag(state.event, ~SIO2_EVENT_SEMA);
+      SignalSema(transfer_sema);
+    } else if (bits & SIO2_EVENT_PAD_INIT) {
+#else
     WaitEventFlag(state.event, SIO2_EVENT_INIT_MASK, EW_OR, &bits);
     if (bits & SIO2_EVENT_PAD_INIT) {
+#endif
       ClearEventFlag(state.event, ~SIO2_EVENT_PAD_INIT);
       SetEventFlag(state.event, SIO2_EVENT_PAD_READY);
     } else if (bits & SIO2_EVENT_INIT_40) {
@@ -262,6 +293,9 @@ int start(int argc, char** argv) {
   int priority;
   int intr_state;
   char* value;
+#if SIO2MAN_VERSION >= 0x0205
+  struct SemaParam sema;
+#endif
   if (RegisterLibraryEntries(sio2man_stub))
     return 1;
   if (initialized)
@@ -296,6 +330,12 @@ int start(int argc, char** argv) {
   dmac_set_priority(DMA_CHANNEL_SIO2_OUT, SIO2_DMA_PRIORITY);
   dmac_enable(DMA_CHANNEL_SIO2_IN);
   dmac_enable(DMA_CHANNEL_SIO2_OUT);
+#if SIO2MAN_VERSION >= 0x0205
+  sema.attr = 0;
+  sema.initCount = 1;
+  sema.maxCount = 64;
+  transfer_sema = CreateSema(&sema);
+#endif
   StartThread(state.thread, 0);
   return 0;
 }
@@ -310,6 +350,25 @@ void sio2_shutdown(void) {
   dmac_disable(DMA_CHANNEL_SIO2_IN);
   dmac_disable(DMA_CHANNEL_SIO2_OUT);
 }
+
+#if SIO2MAN_VERSION >= 0x0205
+void sio2_pad_acquire(void) {
+  WaitSema(transfer_sema);
+  sio2_pad_init();
+}
+
+#if SIO2MAN_VERSION >= 0x0300
+void sio2_mc_acquire(void) {
+  WaitSema(transfer_sema);
+  sio2_mc_init();
+}
+#endif
+
+void sio2_transfer_release(void) {
+  sio2_transfer_reset();
+  SignalSema(transfer_sema);
+}
+#endif
 
 void sio2_pad_init(void) {
   SetEventFlag(state.event, SIO2_EVENT_PAD_INIT);

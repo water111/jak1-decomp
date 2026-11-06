@@ -24,6 +24,7 @@ extern int StartThread(int thid, u_long arg);
 extern int SleepThread();
 extern int WakeupThread(int thid);
 extern int iWakeupThread(int thid);
+int iCancelWakeupThread(int thid);
 
 struct SysClock {
   u_int low;

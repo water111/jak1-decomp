@@ -140,8 +140,22 @@ impl SourceMap {
             DiagnosticLevel::Warning => "warning",
             DiagnosticLevel::Error => "error",
         };
-        let Some(span) = diagnostic.span else {
-            return Ok(format!("{level}: {}", diagnostic.message));
+        let mut output = self.render_message(level, &diagnostic.message, diagnostic.span)?;
+        for context in &diagnostic.context {
+            output.push('\n');
+            output.push_str(&self.render_message("note", &context.message, context.span)?);
+        }
+        Ok(output)
+    }
+
+    fn render_message(
+        &self,
+        level: &str,
+        message: &str,
+        span: Option<SpanInfo>,
+    ) -> Result<String, String> {
+        let Some(span) = span else {
+            return Ok(format!("{level}: {message}"));
         };
         let resolved = self.resolve_span(span)?;
         let start = resolved.range.start as usize;
@@ -162,8 +176,7 @@ impl SourceMap {
         let carets = "^".repeat(highlight_width);
 
         Ok(format!(
-            "{level}: {}\n --> {}:{}:{}\n{space:>width$} |\n{} | {shown_line}\n{space:>width$} | {padding}{carets}",
-            diagnostic.message,
+            "{level}: {message}\n --> {}:{}:{}\n{space:>width$} |\n{} | {shown_line}\n{space:>width$} | {padding}{carets}",
             resolved.path.display(),
             resolved.line,
             resolved.column,

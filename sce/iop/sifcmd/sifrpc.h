@@ -4,10 +4,10 @@
 // EE/IOP Remote Procedure Calls with SIF.
 
 typedef struct _sif_rpc_data {
-  void* paddr;       // packet address
-  unsigned int pid;  // packet id
-  int tid;           // thread id
-  unsigned int mode; // call mode
+  void* paddr;        // packet address
+  unsigned int pid;   // packet id
+  int tid;            // thread id
+  unsigned int mode;  // call mode
 } sceSifRpcData;
 
 typedef void (*sceSifEndFunc)(void*);
@@ -76,5 +76,16 @@ int sceSifGetOtherData(sceSifReceiveData* request,
                        void* dest,
                        int size,
                        unsigned int mode);
+
+int sceSifBindRpc(sceSifClientData* client, unsigned int command, unsigned int mode);
+int sceSifCallRpc(sceSifClientData* client,
+                  unsigned int function,
+                  unsigned int mode,
+                  void* send,
+                  int send_size,
+                  void* receive,
+                  int receive_size,
+                  sceSifEndFunc callback,
+                  void* argument);
 
 #endif

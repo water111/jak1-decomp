@@ -82,7 +82,70 @@ const DEFAULT_BUILD: IopBuild = IopBuild {
     debug_import_source: None,
 };
 
+// Both SDRDRV revisions report module version 4.1; the embedded SDK build IDs differ.
+pub(super) const SDRDRV_4_1_2400: IopBuild = IopBuild {
+    output_dir: "sce/iop/sdrdrv",
+    filename: "SDRDRV.IRX",
+    version: "4.1 (SDK 2400)",
+    sha256: "e82385cf40f89dd905a58230da05c410146bf27f2421322f353e83eb920b13b2",
+    source_dir: "sce/iop/sdrdrv",
+    sources: &["main.c", "commands.c", "callbacks.c"],
+    defines: &["SDRDRV_SDK=2400"],
+    imports: &[
+        "sce/iop/libsd/libsd.tbl",
+        "sce/iop/intrman/intrman.tbl",
+        "sce/iop/loadcore/loadcore-1.3.tbl",
+        "sce/iop/sifcmd/sifcmd.tbl",
+        "sce/iop/stdio/stdio-1.3.tbl",
+        "sce/iop/sysclib/sysclib-1.3.tbl",
+        "sce/iop/thbase/thbase.tbl",
+    ],
+    exports: Some(ExportTable {
+        table: "sdrdrv.tbl",
+        object: "exports",
+        position: ExportPosition::Last,
+    }),
+    ..DEFAULT_BUILD
+};
+
+pub(super) const SDRDRV_4_1_2700: IopBuild = IopBuild {
+    version: "4.1 (SDK 2700)",
+    sha256: "37b615869fed71ec90760543d83170dc7b7608142a4117d665a0cfbe78c3cc52",
+    defines: &["SDRDRV_SDK=2700"],
+    imports: &[
+        "sce/iop/libsd/libsd-1.5.tbl",
+        "sce/iop/intrman/intrman.tbl",
+        "sce/iop/loadcore/loadcore-1.3.tbl",
+        "sce/iop/sifcmd/sifcmd.tbl",
+        "sce/iop/stdio/stdio-1.3.tbl",
+        "sce/iop/sysclib/sysclib-1.3.tbl",
+        "sce/iop/thbase/thbase-1.2.tbl",
+    ],
+    ..SDRDRV_4_1_2400
+};
+
+pub(super) const SCRTCHPD_1_1: IopBuild = IopBuild {
+    output_dir: "sce/iop/scrtchpd",
+    filename: "SCRTCHPD.IRX",
+    version: "1.1",
+    sha256: "47027ff57a1f1bb47d4bf8ffc16803195864e73776e1f63eecae2e904e237318",
+    source_dir: "sce/iop/scrtchpd",
+    sources: &["scrtchpd.c"],
+    link_small_data: 8, // Place the eight-byte common state in .sbss.
+    imports: &[
+        "sce/iop/intrman/intrman.tbl",
+        "sce/iop/loadcore/loadcore-1.3.tbl",
+    ],
+    exports: Some(ExportTable {
+        table: "scrtchpd.tbl",
+        object: "exports",
+        position: ExportPosition::Last,
+    }),
+    ..DEFAULT_BUILD
+};
+
 pub(super) const SIO2MAN_2_4: IopBuild = IopBuild {
+    defines: &["SIO2MAN_VERSION=0x0204"],
     output_dir: "sce/iop/sio2man",
     filename: "SIO2MAN.IRX",
     version: "2.4",
@@ -105,6 +168,50 @@ pub(super) const SIO2MAN_2_4: IopBuild = IopBuild {
         position: ExportPosition::Last,
     }),
     ..DEFAULT_BUILD
+};
+
+pub(super) const SIO2MAN_2_5: IopBuild = IopBuild {
+    version: "2.5",
+    sha256: "d02dd7bcf83a802c388b6ce1fdd447b4d5c29dcc7ba11000ccd66f8f14714fd6",
+    defines: &["SIO2MAN_VERSION=0x0205"],
+    imports: &[
+        "sce/iop/loadcore/loadcore-1.3.tbl",
+        "sce/iop/intrman/intrman.tbl",
+        "sce/iop/stdio/stdio-1.3.tbl",
+        "sce/iop/dmacman/dmacman.tbl",
+        "sce/iop/thbase/thbase.tbl",
+        "sce/iop/thevent/thevent.tbl",
+        "sce/iop/thsemap/thsemap.tbl",
+        "sce/iop/sysclib/sysclib-1.3.tbl",
+    ],
+    exports: Some(ExportTable {
+        table: "sio2man-2.5.tbl",
+        object: "exports",
+        position: ExportPosition::Last,
+    }),
+    ..SIO2MAN_2_4
+};
+
+pub(super) const SIO2MAN_3_0: IopBuild = IopBuild {
+    version: "3.0",
+    sha256: "0facd5a832d3114c3477ded714f8766d443705a1440deeb84c59927cf0b6968e",
+    defines: &["SIO2MAN_VERSION=0x0300"],
+    imports: &[
+        "sce/iop/loadcore/loadcore-1.3.tbl",
+        "sce/iop/intrman/intrman.tbl",
+        "sce/iop/stdio/stdio-1.3.tbl",
+        "sce/iop/dmacman/dmacman.tbl",
+        "sce/iop/thbase/thbase-1.2.tbl",
+        "sce/iop/thevent/thevent.tbl",
+        "sce/iop/thsemap/thsemap.tbl",
+        "sce/iop/sysclib/sysclib-1.3.tbl",
+    ],
+    exports: Some(ExportTable {
+        table: "sio2man-3.0.tbl",
+        object: "exports",
+        position: ExportPosition::Last,
+    }),
+    ..SIO2MAN_2_4
 };
 
 pub(super) const MCSERV_2_12: IopBuild = IopBuild {

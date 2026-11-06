@@ -10,8 +10,12 @@ struct Revision {
     description: &'static str,
     iop_builds: &'static [IopBuild],
     ee_builds: &'static [EeBuild],
-    kernel_frame_source: &'static str,
-    kernel_sha256: &'static str,
+    kernel: Option<Kernel>,
+}
+
+struct Kernel {
+    frame_source: &'static str,
+    sha256: &'static str,
 }
 
 // Some OVERLORDs are the same between game revisions and for those we just
@@ -20,8 +24,10 @@ const REVISIONS: &[Revision] = &[
     Revision {
         name: "jak1/20010903/ntsc/us",
         description: "NTSC September Preview",
-        kernel_frame_source: "/tmp/ccsJImXa.c",
-        kernel_sha256: "da3eaeeae4a826bbfaa0fae7d975da29804126934b6838d248fc942fa2a327e5",
+        kernel: Some(Kernel {
+            frame_source: "/tmp/ccsJImXa.c",
+            sha256: "da3eaeeae4a826bbfaa0fae7d975da29804126934b6838d248fc942fa2a327e5",
+        }),
         ee_builds: &[
             EeBuild {
                 defines: &[
@@ -58,8 +64,10 @@ const REVISIONS: &[Revision] = &[
     Revision {
         name: "jak1/20010920/ntsc/jp",
         description: "NTSC Japanese Demo",
-        kernel_frame_source: "/tmp/ccsyJnJg.c",
-        kernel_sha256: "3172bb7dc59e7c96ca2532f2283b8d065ff27eb730c76f7f624ec3fae4996d21",
+        kernel: Some(Kernel {
+            frame_source: "/tmp/ccsyJnJg.c",
+            sha256: "3172bb7dc59e7c96ca2532f2283b8d065ff27eb730c76f7f624ec3fae4996d21",
+        }),
         ee_builds: &[
             EeBuild {
                 defines: &[
@@ -97,8 +105,10 @@ const REVISIONS: &[Revision] = &[
     Revision {
         name: "jak1/20011002/ntsc/us",
         description: "NTSC Cingular Demo",
-        kernel_frame_source: "/tmp/ccxK3wyw.c",
-        kernel_sha256: "d4ca818ecf0254534dd55a4e044beab89872feab2665fb86e550112c371d2952",
+        kernel: Some(Kernel {
+            frame_source: "/tmp/ccxK3wyw.c",
+            sha256: "d4ca818ecf0254534dd55a4e044beab89872feab2665fb86e550112c371d2952",
+        }),
         ee_builds: &[
             EeBuild {
                 defines: &[
@@ -138,8 +148,10 @@ const REVISIONS: &[Revision] = &[
     Revision {
         name: "jak1/20011019/ntsc/us",
         description: "NTSC October Prototype",
-        kernel_frame_source: "/tmp/cch7zhoJ.c",
-        kernel_sha256: "9c711b8d7a30c862e152007189d33a1679982adaa5ce5612fba16bf35178a88b",
+        kernel: Some(Kernel {
+            frame_source: "/tmp/cch7zhoJ.c",
+            sha256: "9c711b8d7a30c862e152007189d33a1679982adaa5ce5612fba16bf35178a88b",
+        }),
         ee_builds: &[
             EeBuild {
                 defines: &[
@@ -177,8 +189,10 @@ const REVISIONS: &[Revision] = &[
     Revision {
         name: "jak1/20011031/ntsc/us",
         description: "NTSC Retail",
-        kernel_frame_source: "/tmp/ccX4drDa.c",
-        kernel_sha256: "b3051491a4f41bd90b345bbd91fe60b4c85f3060bacd0552903645f8d27268d5",
+        kernel: Some(Kernel {
+            frame_source: "/tmp/ccX4drDa.c",
+            sha256: "b3051491a4f41bd90b345bbd91fe60b4c85f3060bacd0552903645f8d27268d5",
+        }),
         ee_builds: &[
             EeBuild {
                 defines: &[
@@ -215,8 +229,10 @@ const REVISIONS: &[Revision] = &[
     Revision {
         name: "jak1/20011102/pal/eu",
         description: "PAL OPS2M Demo",
-        kernel_frame_source: "/tmp/ccKPi7V4.c",
-        kernel_sha256: "61996c5241897b57c34d77409b3019c15036c410c4e10744c81da7889d9a214e",
+        kernel: Some(Kernel {
+            frame_source: "/tmp/ccKPi7V4.c",
+            sha256: "61996c5241897b57c34d77409b3019c15036c410c4e10744c81da7889d9a214e",
+        }),
         ee_builds: &[
             EeBuild {
                 defines: &[
@@ -256,8 +272,10 @@ const REVISIONS: &[Revision] = &[
     Revision {
         name: "jak1/20011104/pal/eu",
         description: "PAL Retail",
-        kernel_frame_source: "/tmp/ccn1liKu.c",
-        kernel_sha256: "ad5b47891e4fdfd95d349e81b59df48eed5fa195053c49520276f09ce54aa7ba",
+        kernel: Some(Kernel {
+            frame_source: "/tmp/ccn1liKu.c",
+            sha256: "ad5b47891e4fdfd95d349e81b59df48eed5fa195053c49520276f09ce54aa7ba",
+        }),
         ee_builds: &[
             EeBuild {
                 defines: &[
@@ -294,8 +312,10 @@ const REVISIONS: &[Revision] = &[
     Revision {
         name: "jak1/20011111/pal/eu",
         description: "PAL Demo",
-        kernel_frame_source: "/tmp/ccvMt3Na.c",
-        kernel_sha256: "a69ef4282d3a81c7189781a25464942f38a3345ddfaf347e3831fef1ceb4a258",
+        kernel: Some(Kernel {
+            frame_source: "/tmp/ccvMt3Na.c",
+            sha256: "a69ef4282d3a81c7189781a25464942f38a3345ddfaf347e3831fef1ceb4a258",
+        }),
         ee_builds: &[
             EeBuild {
                 defines: &[
@@ -333,8 +353,10 @@ const REVISIONS: &[Revision] = &[
     Revision {
         name: "jak1/20011121/ntsc/jp",
         description: "NTSC Japanese Retail",
-        kernel_frame_source: "/tmp/ccRTKVAZ.c",
-        kernel_sha256: "7ad110ee363574135dbd648d0c459f96b0000c9df04539a156d3792a366ffa07",
+        kernel: Some(Kernel {
+            frame_source: "/tmp/ccRTKVAZ.c",
+            sha256: "7ad110ee363574135dbd648d0c459f96b0000c9df04539a156d3792a366ffa07",
+        }),
         ee_builds: &[
             EeBuild {
                 defines: &[
@@ -371,8 +393,10 @@ const REVISIONS: &[Revision] = &[
     Revision {
         name: "jak1/20011127/ntsc/us",
         description: "NTSC Greatest Hits",
-        kernel_frame_source: "/tmp/ccDjQrOc.c",
-        kernel_sha256: "d0769f007060b952abf25d170726d0b361c3f37cfc133af3afe269a3f7bb0525",
+        kernel: Some(Kernel {
+            frame_source: "/tmp/ccDjQrOc.c",
+            sha256: "d0769f007060b952abf25d170726d0b361c3f37cfc133af3afe269a3f7bb0525",
+        }),
         ee_builds: &[
             EeBuild {
                 defines: &[
@@ -409,8 +433,10 @@ const REVISIONS: &[Revision] = &[
     Revision {
         name: "jak1/20020121/ntsc/kr",
         description: "NTSC Korean Retail",
-        kernel_frame_source: "/tmp/ccX4drDa.c",
-        kernel_sha256: "b3051491a4f41bd90b345bbd91fe60b4c85f3060bacd0552903645f8d27268d5",
+        kernel: Some(Kernel {
+            frame_source: "/tmp/ccX4drDa.c",
+            sha256: "b3051491a4f41bd90b345bbd91fe60b4c85f3060bacd0552903645f8d27268d5",
+        }),
         ee_builds: &[
             EeBuild {
                 defines: &[
@@ -443,6 +469,62 @@ const REVISIONS: &[Revision] = &[
             iop::MCMAN_2_21,
             iop::SND989_2_6_8,
         ],
+    },
+    Revision {
+        name: "jak2/20030405/ntsc/us",
+        description: "NTSC Early Demo",
+        kernel: None,
+        ee_builds: &[],
+        iop_builds: &[iop::SIO2MAN_2_5, iop::SDRDRV_4_1_2400],
+    },
+    Revision {
+        name: "jak2/20030713/pal/eu",
+        description: "PAL Preview",
+        kernel: None,
+        ee_builds: &[],
+        iop_builds: &[iop::SCRTCHPD_1_1, iop::SIO2MAN_3_0, iop::SDRDRV_4_1_2700],
+    },
+    Revision {
+        name: "jak2/20030720/pal/eu",
+        description: "PAL Demo",
+        kernel: None,
+        ee_builds: &[],
+        iop_builds: &[iop::SCRTCHPD_1_1, iop::SIO2MAN_3_0, iop::SDRDRV_4_1_2700],
+    },
+    Revision {
+        name: "jak2/20030818/pal/eu",
+        description: "PAL Review",
+        kernel: None,
+        ee_builds: &[],
+        iop_builds: &[iop::SCRTCHPD_1_1, iop::SIO2MAN_3_0, iop::SDRDRV_4_1_2700],
+    },
+    Revision {
+        name: "jak2/20030826/ntsc/us",
+        description: "NTSC Retail",
+        kernel: None,
+        ee_builds: &[],
+        iop_builds: &[iop::SCRTCHPD_1_1, iop::SIO2MAN_3_0, iop::SDRDRV_4_1_2700],
+    },
+    Revision {
+        name: "jak2/20030916/pal/eu",
+        description: "PAL Retail",
+        kernel: None,
+        ee_builds: &[],
+        iop_builds: &[iop::SCRTCHPD_1_1, iop::SIO2MAN_3_0, iop::SDRDRV_4_1_2700],
+    },
+    Revision {
+        name: "jak2/20031107/ntsc/us",
+        description: "NTSC Retail v2.01",
+        kernel: None,
+        ee_builds: &[],
+        iop_builds: &[iop::SCRTCHPD_1_1, iop::SIO2MAN_3_0, iop::SDRDRV_4_1_2700],
+    },
+    Revision {
+        name: "jak2/20040108/ntsc/jp",
+        description: "NTSC Japanese Retail",
+        kernel: None,
+        ee_builds: &[],
+        iop_builds: &[iop::SCRTCHPD_1_1, iop::SIO2MAN_3_0, iop::SDRDRV_4_1_2700],
     },
 ];
 
@@ -481,11 +563,13 @@ fn build_revision(repo_root: &Path, build_dir: &Path, revision: &Revision) -> io
         build_dir,
         revision.ee_builds,
     )?);
-    ninja.push_str(&ee::kernel_link(
-        build_dir,
-        revision.ee_builds,
-        revision.kernel_frame_source,
-    )?);
+    if let Some(kernel) = &revision.kernel {
+        ninja.push_str(&ee::kernel_link(
+            build_dir,
+            revision.ee_builds,
+            kernel.frame_source,
+        )?);
+    }
     write_if_changed(&build_dir.join("build.ninja"), &ninja)?;
     let status = Command::new("ninja").current_dir(build_dir).status()?;
     if !status.success() {
@@ -522,18 +606,20 @@ fn main() {
             failed = true;
             continue;
         }
-        match fs::read(build_dir.join("KERNEL.ELF")).map(|data| sha256::hash(&data)) {
-            Ok(actual) if actual == revision.kernel_sha256 => println!("[OK] KERNEL.ELF"),
-            Ok(actual) => {
-                println!(
-                    "[FAIL] KERNEL.ELF\n  expected: {}\n  actual: {actual}",
-                    revision.kernel_sha256
-                );
-                failed = true;
-            }
-            Err(error) => {
-                println!("[FAIL] KERNEL.ELF: {error}");
-                failed = true;
+        if let Some(kernel) = &revision.kernel {
+            match fs::read(build_dir.join("KERNEL.ELF")).map(|data| sha256::hash(&data)) {
+                Ok(actual) if actual == kernel.sha256 => println!("[OK] KERNEL.ELF"),
+                Ok(actual) => {
+                    println!(
+                        "[FAIL] KERNEL.ELF\n  expected: {}\n  actual: {actual}",
+                        kernel.sha256
+                    );
+                    failed = true;
+                }
+                Err(error) => {
+                    println!("[FAIL] KERNEL.ELF: {error}");
+                    failed = true;
+                }
             }
         }
         for build in revision.iop_builds {

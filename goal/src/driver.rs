@@ -4,8 +4,10 @@ use std::path::{Path, PathBuf};
 
 use crate::diagnostic::Diagnostic;
 pub use crate::diagnostic::{Diagnostic as CompilerMessage, DiagnosticLevel as MessageLevel};
+use crate::frontend::Frontend;
 use crate::goos::Interpreter;
-use crate::type_system::{BUILTIN_FILE_ID, TypeSystem};
+use crate::object_file::ObjectFileOptions;
+use crate::type_system::{BUILTIN_FILE_ID, TypeSystem, Visibility};
 
 // The Driver is the top-level compiler entry point.
 // The driver itself handles build ordering logic.
@@ -169,6 +171,7 @@ pub struct Driver {
     next_file_id: FileId,
     goos: Interpreter,
     types: TypeSystem,
+    frontend: Frontend,
 }
 
 impl Driver {
@@ -194,6 +197,8 @@ impl Driver {
         }
 
         // create driver
+        let mut types = TypeSystem::new();
+        let none_type = types.intern_type_spec("none");
         let mut driver = Self {
             project_file,
             source_directory,
@@ -205,7 +210,8 @@ impl Driver {
             goos: Interpreter::new().map_err(|diagnostic| {
                 format!("could not initialize GOOS: {}", diagnostic.message)
             })?,
-            types: TypeSystem::new(),
+            types,
+            frontend: Frontend::new(none_type),
         };
 
         // add all source files
@@ -253,6 +259,14 @@ impl Driver {
 
     pub fn type_system_mut(&mut self) -> &mut TypeSystem {
         &mut self.types
+    }
+
+    pub fn frontend(&self) -> &Frontend {
+        &self.frontend
+    }
+
+    pub fn frontend_mut(&mut self) -> &mut Frontend {
+        &mut self.frontend
     }
 
     fn allocate_file_id(&mut self) -> Result<FileId, String> {
@@ -467,7 +481,8 @@ impl Driver {
         self.reverse_dependencies = make_reverse_dependencies(&self.files);
     }
 
-    // These three methods are the boundary that the parser/front end will fill in later.
+    // Compiler boundary methods. The driver owns invalidation and output;
+    // compiler subsystems own the definitions and generated object.
     fn remove_definitions(&mut self, source_file: &SourceFile) {
         self.types.remove_definitions(source_file.id);
     }
@@ -475,21 +490,51 @@ impl Driver {
     fn compile(
         &mut self,
         source_file: &SourceFile,
-        _dependency_ids: &[FileId],
+        dependency_ids: &[FileId],
     ) -> Result<CompileOutput, Vec<CompilerMessage>> {
-        // TODO
         debug_assert_eq!(self.files[&source_file.id].path, source_file.path);
         let path = self.source_directory.join(&source_file.path);
-        match fs::read(&path) {
-            Ok(_) => Ok(CompileOutput::default()),
-            Err(error) => Err(vec![Diagnostic::error(error.to_string())]),
-        }
+        let text = fs::read_to_string(&path)
+            .map_err(|error| vec![Diagnostic::error(format!("{}: {error}", path.display()))])?;
+        let parsed = self
+            .goos
+            .parser
+            .parse(path, text)
+            .map_err(|diagnostic| vec![diagnostic])?;
+
+        let visibility = Visibility::new(source_file.id, dependency_ids.iter().copied());
+        let file = self
+            .frontend
+            .compile_file(
+                source_file.id,
+                parsed.source_id,
+                visibility,
+                &parsed.objects,
+            )
+            .map_err(|diagnostic| vec![diagnostic])?;
+        let functions =
+            crate::codegen::generate_file(&file).map_err(|error| vec![Diagnostic::error(error)])?;
+        let name = source_file
+            .path
+            .file_stem()
+            .and_then(|name| name.to_str())
+            .ok_or_else(|| vec![Diagnostic::error("source file has no UTF-8 object name")])?;
+        let object = crate::object_file::write_v3(
+            name,
+            &functions,
+            &file.static_data,
+            &self.goos.parser.objects.symbols,
+            ObjectFileOptions::default(),
+        )
+        .map_err(|error| vec![Diagnostic::error(error)])?;
+        Ok(CompileOutput {
+            messages: Vec::new(),
+            object: Some(object),
+        })
     }
 
     pub fn repl_compile(&mut self, _input: &str) -> Result<(), String> {
-        // REPL input skips file visibility and dependency handling.
-        // TODO
-        Ok(())
+        Err("GOAL REPL compilation is not implemented yet".to_owned())
     }
 
     fn write_object(&self, source_path: &Path, contents: &[u8]) -> Result<(), String> {
@@ -602,6 +647,7 @@ mod tests {
     use super::*;
     use std::time::{SystemTime, UNIX_EPOCH};
 
+    use crate::static_data::Segment;
     use crate::type_system::{TypeDefinition, TypeKind, TypeLayout, Visibility};
 
     struct TestDirectory(PathBuf);
@@ -650,9 +696,9 @@ mod tests {
     #[test]
     fn parses_groups_and_orders_dependencies_first() {
         let directory = TestDirectory::new();
-        directory.write("math/vector.gc", "vector");
-        directory.write("math/matrix.gc", "matrix");
-        directory.write("main.gc", "main");
+        directory.write("math/vector.gc", "; test");
+        directory.write("math/matrix.gc", "; test");
+        directory.write("main.gc", "; test");
         let driver = directory.driver(
             "\
              file math/vector.gc\n\
@@ -681,8 +727,8 @@ mod tests {
         assert!(unknown.to_string().contains("unknown file or group"));
 
         let directory = TestDirectory::new();
-        directory.write("a.gc", "a");
-        directory.write("b.gc", "b");
+        directory.write("a.gc", "; test");
+        directory.write("b.gc", "; test");
         directory.write("project.goalproj", "file a.gc b.gc\nfile b.gc a.gc\n");
         let cycle = Driver::load(
             directory.0.join("project.goalproj"),
@@ -710,7 +756,7 @@ mod tests {
     fn dirtiness_propagates_and_successful_rebuild_clears_it() {
         let directory = TestDirectory::new();
         for name in ["a.gc", "b.gc", "c.gc", "unrelated.gc"] {
-            directory.write(name, name);
+            directory.write(name, "; test");
         }
         let mut driver = directory.driver(
             "\
@@ -734,8 +780,8 @@ mod tests {
     #[test]
     fn failed_file_and_later_files_stay_dirty() {
         let directory = TestDirectory::new();
-        directory.write("a.gc", "a");
-        directory.write("b.gc", "b");
+        directory.write("a.gc", "; test");
+        directory.write("b.gc", "; test");
         let mut driver = directory.driver("file a.gc\nfile b.gc a.gc\n");
         fs::remove_file(directory.0.join("a.gc")).unwrap();
 
@@ -747,9 +793,21 @@ mod tests {
     }
 
     #[test]
+    fn unsupported_nonempty_file_is_not_reported_as_compiled() {
+        let directory = TestDirectory::new();
+        directory.write("a.gc", "(unsupported)");
+        let mut driver = directory.driver("file a.gc\n");
+
+        let error = driver.rebuild_dirty().unwrap_err();
+        assert!(error.contains("IR generation is not implemented"));
+        assert_eq!(dirty_paths(&driver), [PathBuf::from("a.gc")].into());
+        assert!(!directory.0.join("build/a.o").exists());
+    }
+
+    #[test]
     fn invalidation_removes_file_owned_type_records_but_keeps_type_ids() {
         let directory = TestDirectory::new();
-        directory.write("a.gc", "a");
+        directory.write("a.gc", "; test");
         let mut driver = directory.driver("file a.gc\n");
         driver.rebuild_dirty().unwrap();
         let file = driver.ids_by_path[Path::new("a.gc")];
@@ -781,7 +839,7 @@ mod tests {
     fn project_edits_use_old_and_new_reverse_graphs_and_preserve_ids() {
         let directory = TestDirectory::new();
         for name in ["a.gc", "b.gc", "c.gc", "d.gc"] {
-            directory.write(name, name);
+            directory.write(name, "; test");
         }
         let mut driver = directory.driver(
             "\
@@ -812,8 +870,8 @@ mod tests {
     #[test]
     fn removing_a_file_invalidates_its_old_dependents() {
         let directory = TestDirectory::new();
-        directory.write("a.gc", "a");
-        directory.write("b.gc", "b");
+        directory.write("a.gc", "; test");
+        directory.write("b.gc", "; test");
         let mut driver = directory.driver("file a.gc\nfile b.gc a.gc\n");
         driver.rebuild_dirty().unwrap();
 
@@ -835,5 +893,18 @@ mod tests {
             fs::read(directory.0.join("build/game/main.o")).unwrap(),
             b"object"
         );
+    }
+
+    #[test]
+    fn compiles_an_empty_file_through_the_backend() {
+        let directory = TestDirectory::new();
+        directory.write("gstring-h.gc", "");
+        let mut driver = directory.driver("file gstring-h.gc\n");
+        driver.rebuild_dirty().unwrap();
+        let object = fs::read(directory.0.join("build/gstring-h.o")).unwrap();
+        assert_eq!(object.len(), 192);
+        let object = crate::goal_object::GoalObject::read(&object).unwrap();
+        assert_eq!(object.name, "gstring-h");
+        assert_eq!(object.segments[Segment::TopLevel.index()].len(), 24);
     }
 }

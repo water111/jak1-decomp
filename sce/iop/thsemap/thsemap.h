@@ -10,6 +10,18 @@ struct SemaParam {
   int maxCount;
 };
 
+struct SemaInfo {
+  u_int attr;
+  u_int option;
+  int initCount;
+  int maxCount;
+  int currentCount;
+  int numWaitThreads;
+  int reserved[2];
+};
+
+int ReferSemaStatus(int semid, struct SemaInfo* info);
+
 extern int CreateSema(struct SemaParam* param);
 extern int DeleteSema(int semid);
 extern int SignalSema(int semid);

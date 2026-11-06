@@ -81,12 +81,24 @@ impl Visibility {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum RegisterClass {
     Gpr,
     Fpr,
     Vf,
     Gpr128,
+}
+
+impl RegisterClass {
+    pub const REGISTER_FILE_COUNT: usize = 3;
+
+    pub const fn register_file(self) -> usize {
+        match self {
+            Self::Gpr | Self::Gpr128 => 0,
+            Self::Fpr => 1,
+            Self::Vf => 2,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

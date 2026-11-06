@@ -1,0 +1,12 @@
+Libname scrtpad
+Version 1.1
+Flags 0x0000
+
+Entry -                     # 000
+Entry -                     # 001
+Entry scrtchpd_shutdown      # 002
+Entry scrtchpd_get_state     # 003
+Entry AllocScratchPad       # 004
+Entry FreeScratchPad        # 005
+Entry -                     # 006
+Entry -                     # 007

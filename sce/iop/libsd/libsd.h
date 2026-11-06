@@ -46,4 +46,12 @@ void sceSdGetEffectAttr(int core, SdEffectAttr* attr);
 int sceSdSetEffectAttr(int core, SdEffectAttr* attr);
 int sceSdClearEffectWorkArea(int core, int channel, u_int effect);
 
+int sceSdProcBatchEx(sceSdBatch* batch, u_int returns[], u_int num, u_int voices);
+void* sceSdGetTransIntrHandlerArgument(int channel);
+void* sceSdGetSpu2IntrHandlerArgument(void);
+int sceSdStopTrans(int channel);
+int sceSdCleanEffectWorkArea(int core, int channel, int effect_mode);
+int sceSdSetEffectMode(int core, SdEffectAttr* attr);
+int sceSdSetEffectModeParams(int core, SdEffectAttr* attr);
+
 #endif

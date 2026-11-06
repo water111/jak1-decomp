@@ -64,4 +64,8 @@ void sio2_call_callback4(void);
 void sio2_mc_init_legacy(void);
 void sio2_transfer_reset_legacy(void);
 
+void sio2_pad_acquire(void);
+void sio2_mc_acquire(void);
+void sio2_transfer_release(void);
+
 #endif

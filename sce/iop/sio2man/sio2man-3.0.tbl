@@ -1,0 +1,68 @@
+Libname sio2man
+Version 2.4
+Flags 0x0000
+
+Entry start	# 000
+Entry -	# 001
+Entry sio2_shutdown	# 002
+Entry -	# 003
+Entry sio2_ctrl_set_legacy = sio2_ctrl_set	# 004
+Entry sio2_ctrl_get_legacy = sio2_ctrl_get	# 005
+Entry sio2_recv1_get_legacy = sio2_recv1_get	# 006
+Entry sio2_send1_set_legacy = sio2_send1_set	# 007
+Entry sio2_send1_get_legacy = sio2_send1_get	# 008
+Entry sio2_send2_set_legacy = sio2_send2_set	# 009
+Entry sio2_send2_get_legacy = sio2_send2_get	# 010
+Entry sio2_recv2_get_legacy = sio2_recv2_get	# 011
+Entry sio2_send3_set_legacy = sio2_send3_set	# 012
+Entry sio2_send3_get_legacy = sio2_send3_get	# 013
+Entry sio2_recv3_get_legacy = sio2_recv3_get	# 014
+Entry sio2_unk78_set_legacy = sio2_unk78_set	# 015
+Entry sio2_unk78_get_legacy = sio2_unk78_get	# 016
+Entry sio2_unk7c_set_legacy = sio2_unk7c_set	# 017
+Entry sio2_unk7c_get_legacy = sio2_unk7c_get	# 018
+Entry sio2_data_out_legacy = sio2_data_out	# 019
+Entry sio2_data_in_legacy = sio2_data_in	# 020
+Entry sio2_stat_set_legacy = sio2_stat_set	# 021
+Entry sio2_stat_get_legacy = sio2_stat_get	# 022
+Entry sio2_pad_init_legacy = sio2_pad_init	# 023
+Entry sio2_mc_init_legacy = sio2_mc_init	# 024
+Entry sio2_transfer_legacy = sio2_transfer	# 025
+Entry sio2_transfer_reset_legacy = sio2_transfer_reset	# 026
+Entry sio2_ctrl_set	# 027
+Entry sio2_ctrl_get	# 028
+Entry sio2_recv1_get	# 029
+Entry sio2_send1_set	# 030
+Entry sio2_send1_get	# 031
+Entry sio2_send2_set	# 032
+Entry sio2_send2_get	# 033
+Entry sio2_recv2_get	# 034
+Entry sio2_send3_set	# 035
+Entry sio2_send3_get	# 036
+Entry sio2_recv3_get	# 037
+Entry sio2_unk78_set	# 038
+Entry sio2_unk78_get	# 039
+Entry sio2_unk7c_set	# 040
+Entry sio2_unk7c_get	# 041
+Entry sio2_data_out	# 042
+Entry sio2_data_in	# 043
+Entry sio2_stat_set	# 044
+Entry sio2_stat_get	# 045
+Entry sio2_pad_init	# 046
+Entry sio2_mc_init	# 047
+Entry sio2_mtap_init	# 048
+Entry sio2_init_40	# 049
+Entry sio2_init_100	# 050
+Entry sio2_transfer	# 051
+Entry sio2_transfer_reset	# 052
+Entry sio2_set_slot_callback	# 053
+Entry sio2_set_callback2	# 054
+Entry sio2_set_callback3	# 055
+Entry sio2_set_callback4	# 056
+Entry sio2_change_slot	# 057
+Entry sio2_call_callback2	# 058
+Entry sio2_call_callback3	# 059
+Entry sio2_call_callback4	# 060
+Entry sio2_pad_acquire	# 061
+Entry sio2_transfer_release	# 062
+Entry sio2_mc_acquire	# 063
