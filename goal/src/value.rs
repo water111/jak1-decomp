@@ -1,5 +1,5 @@
 use crate::diagnostic::Diagnostic;
-use crate::ir::{FunctionId, StackSlot, VirtualRegisterId};
+use crate::ir::{FunctionId, Register, StackSlot};
 use crate::object::SymbolId;
 use crate::static_data::StaticLabelId;
 use crate::type_system::{RegisterClass, TypeSpec};
@@ -21,11 +21,17 @@ pub struct BitFieldInfo {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum PlaceBase {
-    Register(VirtualRegisterId),
+    Register(Register),
     Global(SymbolId),
     Memory {
-        base: VirtualRegisterId,
+        base: Register,
         offset: i64,
+    },
+    Indexed {
+        base: Register,
+        index: Register,
+        offset: i64,
+        address_type: TypeSpec,
     },
 }
 
@@ -41,11 +47,21 @@ pub struct Place {
     pub projection: PlaceProjection,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum ValueKind {
     None,
-    Register(VirtualRegisterId),
+    Register(Register),
     Integer(i128),
+    EmptyList,
+    IntegerOffset {
+        base: Register,
+        offset: i64,
+    },
+    IndexedAddress {
+        base: Register,
+        index: Register,
+        offset: i64,
+    },
     Float(f32),
     SymbolObject(SymbolId),
     Function(FunctionId),
@@ -65,19 +81,12 @@ impl Value {
         Self { ty, kind }
     }
 
-    pub fn register(ty: TypeSpec, register: VirtualRegisterId) -> Self {
-        Self::new(ty, ValueKind::Register(register))
+    pub fn register(ty: TypeSpec, register: impl Into<Register>) -> Self {
+        Self::new(ty, ValueKind::Register(register.into()))
     }
 
     pub fn place(ty: TypeSpec, place: Place) -> Self {
         Self::new(ty, ValueKind::Place(place))
-    }
-
-    pub fn as_register(&self) -> Option<VirtualRegisterId> {
-        match self.kind {
-            ValueKind::Register(register) => Some(register),
-            _ => None,
-        }
     }
 
     pub fn into_place(self) -> Result<Place, Diagnostic> {
@@ -96,7 +105,7 @@ mod tests {
     fn places_are_flat_and_keep_address_components_once() {
         let place = Place {
             base: PlaceBase::Memory {
-                base: VirtualRegisterId(4),
+                base: Register::Virtual(crate::ir::VirtualRegisterId(4)),
                 offset: 12,
             },
             projection: PlaceProjection::Whole(LoadInfo {
@@ -108,7 +117,7 @@ mod tests {
         assert_eq!(
             place.base,
             PlaceBase::Memory {
-                base: VirtualRegisterId(4),
+                base: Register::Virtual(crate::ir::VirtualRegisterId(4)),
                 offset: 12,
             }
         );

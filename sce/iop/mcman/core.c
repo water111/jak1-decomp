@@ -4,12 +4,23 @@
 #include "sce/iop/mcman/directory.h"
 #include "sce/iop/mcman/filesystem.h"
 #include "sce/iop/mcman/internal.h"
+#include "sce/iop/mcman/transport.h"
 #include "sce/iop/sio2man/sio2man.h"
 #include "sce/iop/sysclib/string.h"
 
+#if MCMAN_VERSION >= 0x0222
+char mcman_signature[16] = "PsIImcman   2710";
+#elif MCMAN_VERSION >= 0x0220
+char mcman_signature[16] = "PsIImcman   2430";
+#else
 char mcman_signature[16] = "PsIImcman   2210";
+#endif
 int mcman_allow_ps1 = 0;
-struct ModuleInfo Module = {"mcman_tool", 0x215};
+#if MCMAN_VERSION >= 0x0220
+struct ModuleInfo Module = {"mcman", MCMAN_VERSION};
+#else
+struct ModuleInfo Module = {"mcman_tool", MCMAN_VERSION};
+#endif
 
 int mcman_chrpos(const char* text, int character) {
   const u_char* p = (const u_char*)text;
@@ -28,16 +39,45 @@ found:
 
 extern int mcman_stub[];
 
+#if MCMAN_VERSION >= 0x0220
+int start(int argc) {
+  if (argc < 0)
+    return mcman_shutdown(-argc);
+#else
 int start(void) {
+#endif
   if (RegisterLibraryEntries(mcman_stub))
     return 1;
+#if MCMAN_VERSION < 0x0222
   CpuEnableIntr();
+#endif
   mcman_initPS2com();
   mcman_initPS1PDAcom();
   mcman_initcache();
   mcman_initdev();
+#if MCMAN_VERSION >= 0x0220
+  return 2;
+#else
   return 0;
+#endif
 }
+
+#if MCMAN_VERSION >= 0x0220
+int mcman_shutdown(int mode) {
+  int intr, result;
+  CpuSuspendIntr(&intr);
+  result = ReleaseLibraryEntries(mcman_stub);
+  CpuResumeIntr(intr);
+  if (result == 0 || result == -213) {
+    mcman_shutdown_device();
+    McCloseAll();
+    mcman_shutdownPS2com();
+    mcman_shutdownPS1com();
+    return 1;
+  }
+  return 2;
+}
+#endif
 
 int McSetSio2Mode(int mode) {
   return ((int (*)(int))sio2_call_callback3)((mode & 1) | 2);
@@ -108,6 +148,20 @@ int mcman_checkpath(const char* path) {
   }
   return 1;
 }
+
+#if MCMAN_VERSION >= 0x0220
+int mcman_is_dot_path(const char* path) {
+  int position = -1;
+  int next;
+  while ((next = mcman_chrpos(path + position + 1, '/')) >= 0)
+    position += next + 1;
+  path += position + 1;
+  position = 0;
+  if (!strcmp(path, ".") || !strcmp(path, ".."))
+    position = 1;
+  return position;
+}
+#endif
 
 int mcman_checkdirpath(const char* name, const char* pattern) {
   int position;
@@ -180,6 +234,12 @@ int McCloseAll(void) {
   return result;
 }
 
+#if MCMAN_VERSION >= 0x0220
+#define MCMAN_PS1_DISABLED -5
+#else
+#define MCMAN_PS1_DISABLED -19
+#endif
+
 int mcman_detectcard(int port, int slot) {
   int result;
   int type = mcman_devices[port][slot].card_type;
@@ -204,7 +264,7 @@ int mcman_detectcard(int port, int slot) {
       if (mcman_allow_ps1)
         return 0;
       if (mcman_devices[port][slot].card_type == 1)
-        return -19;
+        return MCMAN_PS1_DISABLED;
       return 0;
     }
     if (result < -9)
@@ -219,7 +279,7 @@ int mcman_detectcard(int port, int slot) {
       mcman_devices[port][slot].card_type = 1;
     check_ps1_support:
       if (!mcman_allow_ps1)
-        return -19;
+        return MCMAN_PS1_DISABLED;
       return result;
     }
   fallback:
@@ -262,7 +322,7 @@ int McDetectCard2(int port, int slot) {
       if (mcman_allow_ps1)
         return 0;
       if (mcman_devices[port][slot].card_type == 1)
-        return -19;
+        return MCMAN_PS1_DISABLED;
       return 0;
     }
     if (result < -9)
@@ -277,7 +337,7 @@ int McDetectCard2(int port, int slot) {
       mcman_devices[port][slot].card_type = 1;
     check_ps1_support:
       if (!mcman_allow_ps1)
-        return -19;
+        return MCMAN_PS1_DISABLED;
       return result;
     }
   fallback:
@@ -303,6 +363,10 @@ int McOpen(int port, int slot, const char* filename, int flag) {
   if (r != 0)
     return r;
 
+#if MCMAN_VERSION >= 0x0220
+  if (!filename || !*(const u_char*)filename)
+    return -4;
+#endif
   if (!mcman_allow_ps1)
     flag &= ~0x00002000;
 
@@ -530,6 +594,10 @@ int McGetDir(int port,
   r = mcman_detectcard(port, slot);
   if (r != 0)
     return r;
+#if MCMAN_VERSION >= 0x0220
+  if (!dirname || !*(const u_char*)dirname)
+    return -4;
+#endif
 
   if (mcman_devices[port][slot].card_type != MCMAN_CARD_PS2)
     r = mcman_getdir1(port, slot, dirname, search_flags, maxent, info);
@@ -550,6 +618,10 @@ int McGetEntSpace(int port, int slot, const char* dirname) {
   r = mcman_detectcard(port, slot);
   if (r != 0)
     return r;
+#if MCMAN_VERSION >= 0x0220
+  if (!dirname || !*(const u_char*)dirname)
+    return -4;
+#endif
 
   if (mcman_devices[port][slot].card_type == MCMAN_CARD_PS2) {
     r = mcman_getentspace(port, slot, dirname);
@@ -587,6 +659,11 @@ int mcman_getstat(int port, int slot, const char* name, struct McIoStat* output)
   int result = mcman_detectcard(port, slot);
   if (result != 0)
     return result;
+#if MCMAN_VERSION >= 0x0220
+  if (!name || !*(const u_char*)name)
+    return -4;
+#endif
+
   if (mcman_devices[port][slot].card_type != MCMAN_CARD_PS2)
     result = mcman_getstat1(port, slot, name, output);
   else
@@ -608,6 +685,12 @@ int McSetFileInfo(int port,
   r = mcman_detectcard(port, slot);
   if (r != 0)
     return r;
+#if MCMAN_VERSION >= 0x0220
+  if (!filename || !*(const u_char*)filename)
+    return -4;
+  if (mcman_is_dot_path(filename))
+    return -5;
+#endif
 
   if (mcman_devices[port][slot].card_type != MCMAN_CARD_PS2)
     r = mcman_setinfo1(port, slot, filename, info, flags);
@@ -636,6 +719,10 @@ int McChDir(int port, int slot, const char* newdir, char* currentdir) {
   r = mcman_detectcard(port, slot);
   if (r != 0)
     return r;
+#if MCMAN_VERSION >= 0x0220
+  if (!newdir || !*(const u_char*)newdir)
+    return -4;
+#endif
 
   if (mcman_devices[port][slot].card_type != MCMAN_CARD_PS2) {
     currentdir[0] = 0;
@@ -657,6 +744,12 @@ int McDelete(int port, int slot, const char* filename, int flags) {
   r = mcman_detectcard(port, slot);
   if (r != 0)
     return r;
+#if MCMAN_VERSION >= 0x0220
+  if (!filename || !*(const u_char*)filename)
+    return -4;
+  if (mcman_is_dot_path(filename))
+    return -5;
+#endif
 
   if (mcman_devices[port][slot].card_type != MCMAN_CARD_PS2)
     r = mcman_delete1(port, slot, filename, flags);
@@ -726,6 +819,15 @@ int mcman_rename(int port, int slot, const char* old_name, const char* new_name)
   struct McDirectoryEntry info;
   if (result != 0)
     return result;
+#if MCMAN_VERSION >= 0x0220
+  if (!old_name || !*(const u_char*)old_name)
+    return -4;
+  if (!new_name || !*(const u_char*)new_name)
+    return -4;
+  if (mcman_is_dot_path(old_name))
+    return -5;
+#endif
+
   if (mcman_devices[port][slot].card_type != MCMAN_CARD_PS2) {
     int position = -1;
     while ((result = mcman_chrpos(new_name + position + 1, '/')) >= 0)
@@ -744,8 +846,11 @@ int mcman_rename(int port, int slot, const char* old_name, const char* new_name)
 #define MCMAN_BCD_TO_BINARY(value) (((value) >> 4) * 10 + ((value) & 15))
 
 int mcman_getmcrtime(struct McDateTime* time) {
-  int retries = 64;
   sceCdCLOCK clock;
+#if MCMAN_VERSION >= 0x0222
+  sceCdReadClock(&clock);
+#else
+  int retries = 64;
   do {
     if (_sceCdRC(&clock))
       break;
@@ -760,6 +865,7 @@ int mcman_getmcrtime(struct McDateTime* time) {
     time->reserved = 0;
     return 0;
   }
+#endif
   time->reserved = 0;
   time->second = MCMAN_BCD_TO_BINARY(clock.second);
   time->minute = MCMAN_BCD_TO_BINARY(clock.minute);

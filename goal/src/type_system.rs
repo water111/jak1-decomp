@@ -5,6 +5,8 @@ use std::collections::{HashMap, HashSet};
 
 pub const BUILTIN_FILE_ID: FileId = FileId::MAX;
 pub const POINTER_SIZE: u32 = 4;
+pub const RUNTIME_TYPE_METHODS_OFFSET: u32 = 16;
+pub const OBJECT_METHOD_COUNT: u16 = 9;
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub struct RuntimeType(SymbolId);
@@ -507,6 +509,7 @@ pub struct DerefInfo {
     pub sign_extend: bool,
     pub register_class: RegisterClass,
     pub stride: u32,
+    pub offset: u32,
     pub load_size: Option<u32>,
     pub result_type: TypeSpec,
 }
@@ -561,6 +564,15 @@ impl TypeSystem {
 
     pub fn symbol_name(&self, symbol: SymbolId) -> Option<&str> {
         self.names.get(&symbol).map(Box::as_ref)
+    }
+
+    pub fn builtin_types(&self) -> impl Iterator<Item = Type> + '_ {
+        self.definitions.iter().filter_map(|(ty, definitions)| {
+            definitions
+                .iter()
+                .any(|definition| definition.owner == BUILTIN_FILE_ID)
+                .then_some(*ty)
+        })
     }
 
     pub fn type_name(&self, ty: Type) -> &str {
@@ -622,12 +634,30 @@ impl TypeSystem {
         self.spec_data(spec).base
     }
 
+    pub fn is_pointer(&self, spec: TypeSpec) -> bool {
+        self.type_spec_base(spec).symbol() == SymbolId(fnv64(b"pointer"))
+    }
+
     pub fn type_spec_arguments(&self, spec: TypeSpec) -> &[TypeSpec] {
         &self.spec_data(spec).arguments
     }
 
     pub fn type_spec_behavior(&self, spec: TypeSpec) -> Option<TypeSpec> {
         self.spec_data(spec).behavior
+    }
+
+    pub fn coerce_to_register_type(&mut self, spec: TypeSpec) -> TypeSpec {
+        let data = self.spec_data(spec);
+        if !data.arguments.is_empty() || data.behavior.is_some() {
+            return spec;
+        }
+        match self.type_name(data.base) {
+            "int8" | "int16" | "int32" | "int64" | "integer" | "sinteger" => {
+                self.intern_type_spec("int")
+            }
+            "uint8" | "uint16" | "uint32" | "uint64" | "uinteger" => self.intern_type_spec("uint"),
+            _ => spec,
+        }
     }
 
     pub fn substitute_method_type(&mut self, spec: TypeSpec, receiver_type: TypeSpec) -> TypeSpec {
@@ -879,6 +909,28 @@ impl TypeSystem {
         self.typecheck_inner(expected, actual, visibility, &mut Vec::new())
     }
 
+    pub fn typecheck_assignment(
+        &self,
+        expected: TypeSpec,
+        actual: TypeSpec,
+        visibility: &Visibility,
+    ) -> TypeResult<()> {
+        let result = self.typecheck(expected, actual, visibility);
+        if result.is_ok() {
+            return result;
+        }
+        let integer = Type(SymbolId(fnv64(b"integer")));
+        let expected_is_integer =
+            self.is_base_subtype(integer, self.type_spec_base(expected), visibility)?;
+        let actual_is_integer =
+            self.is_base_subtype(integer, self.type_spec_base(actual), visibility)?;
+        if expected_is_integer && actual_is_integer {
+            Ok(())
+        } else {
+            result
+        }
+    }
+
     pub fn is_subtype(
         &self,
         expected: TypeSpec,
@@ -889,6 +941,18 @@ impl TypeSystem {
             Ok(()) => Ok(true),
             Err(_) => Ok(false),
         }
+    }
+
+    pub fn integer_is_signed(&self, spec: TypeSpec, visibility: &Visibility) -> TypeResult<bool> {
+        let ty = self.type_spec_base(spec);
+        let integer = Type(SymbolId(fnv64(b"integer")));
+        if !self.is_base_subtype(integer, ty, visibility)? {
+            return Err(format!(
+                "type `{}` is not an integer",
+                self.format_type_spec(spec)
+            ));
+        }
+        Ok(self.layout(ty, visibility)?.load_signed)
     }
 
     pub fn lowest_common_ancestor(
@@ -946,7 +1010,7 @@ impl TypeSystem {
             } else {
                 (field.field_type, false)
             }
-        } else if field.array_size.is_some() {
+        } else if field.array_size.is_some() || field.dynamic {
             (self.pointer_type(field.field_type), false)
         } else {
             (field.field_type, true)
@@ -1024,6 +1088,7 @@ impl TypeSystem {
         let layout = self.layout(self.type_spec_base(result_type), visibility)?;
         let pointer = SymbolId(fnv64(b"pointer"));
         let inline_array = SymbolId(fnv64(b"inline-array"));
+        let array = SymbolId(fnv64(b"array"));
         if data.base.0 == pointer {
             let stride = if layout.kind.is_reference() {
                 POINTER_SIZE
@@ -1035,6 +1100,33 @@ impl TypeSystem {
                 sign_extend: !layout.kind.is_reference() && layout.load_signed,
                 register_class: layout.register_class,
                 stride,
+                offset: 0,
+                load_size: Some(if layout.kind.is_reference() {
+                    POINTER_SIZE
+                } else {
+                    layout.load_size
+                }),
+                result_type,
+            }));
+        }
+        if data.base.0 == array {
+            let data_field = self
+                .find_field(Type(array), SymbolId(fnv64(b"data")), visibility)?
+                .1;
+            let object_offset = self.layout(Type(array), visibility)?.offset;
+            return Ok(Some(DerefInfo {
+                memory_deref: true,
+                sign_extend: layout.kind.is_reference() || layout.load_signed,
+                register_class: layout.register_class,
+                stride: if layout.kind.is_reference() {
+                    POINTER_SIZE
+                } else {
+                    layout.size
+                },
+                offset: data_field
+                    .offset
+                    .checked_sub(object_offset)
+                    .ok_or_else(|| "array data has an invalid offset".to_owned())?,
                 load_size: Some(if layout.kind.is_reference() {
                     POINTER_SIZE
                 } else {
@@ -1049,6 +1141,7 @@ impl TypeSystem {
                 sign_extend: false,
                 register_class: RegisterClass::Gpr,
                 stride: align_up(layout.size, layout.inline_array_alignment)?,
+                offset: 0,
                 load_size: None,
                 result_type,
             }));
@@ -1100,6 +1193,7 @@ impl TypeSystem {
                 layout.alignment = parent.layout.alignment;
                 layout.load_size = parent.layout.load_size;
                 layout.load_signed = parent.layout.load_signed;
+                layout.register_class = parent.layout.register_class;
             }
         }
         layout.dynamic |= definition.options.dynamic_size;
@@ -2033,6 +2127,8 @@ impl TypeSystem {
                 None,
             );
         }
+        self.install_array_type(array, symbol, type_type);
+        self.install_type_fields(type_type, symbol, function);
         self.insert_builtin(
             pair,
             Some(object),
@@ -2040,6 +2136,7 @@ impl TypeSystem {
             None,
         );
         self.install_pair_fields(pair, object);
+        self.install_pair_new_method(pair, symbol, type_type, object);
         for ty in [varargs, method_type] {
             self.insert_builtin(
                 ty,
@@ -2157,13 +2254,161 @@ impl TypeSystem {
         definition.fields = fields;
     }
 
+    fn install_pair_new_method(&mut self, pair: Type, symbol: Type, type_type: Type, object: Type) {
+        let symbol = self.intern_compound_type_spec(symbol, [], None);
+        let type_type = self.intern_compound_type_spec(type_type, [], None);
+        let object = self.intern_compound_type_spec(object, [], None);
+        let pair_spec = self.intern_compound_type_spec(pair, [], None);
+        let signature = self.function_type([symbol, type_type, object, object], pair_spec);
+        let new = self.intern_symbol("new");
+        self.definitions
+            .get_mut(&pair)
+            .expect("pair builtin exists")[0]
+            .value
+            .methods
+            .push(MethodDefinition {
+                name: new,
+                signature,
+                slot: 0,
+                defined_in: pair,
+                private: false,
+                no_virtual: false,
+                overrides_parent: true,
+                span: None,
+            });
+    }
+
+    fn install_array_type(&mut self, array: Type, symbol: Type, type_type: Type) {
+        let int32 = self.intern_type_spec("int32");
+        let type_spec = self.intern_compound_type_spec(type_type, [], None);
+        let uint8 = self.intern_type_spec("uint8");
+        let fields = [
+            ("length", int32, 4, 4, 4, false),
+            ("allocated-length", int32, 8, 4, 4, false),
+            ("content-type", type_spec, 12, 4, 4, false),
+            ("data", uint8, 16, 0, 1, true),
+        ]
+        .into_iter()
+        .map(
+            |(name, field_type, offset, size, alignment, dynamic)| FieldDefinition {
+                name: self.intern_symbol(name),
+                field_type,
+                offset,
+                size,
+                alignment,
+                array_size: None,
+                dynamic,
+                overlay: false,
+                inline: false,
+                print_as: PrintAs::Default,
+                accessor: true,
+                replaces_parent: false,
+                access: FieldAccess::Public,
+                span: None,
+            },
+        )
+        .collect();
+        let symbol = self.intern_compound_type_spec(symbol, [], None);
+        let int = self.intern_type_spec("int");
+        let array_spec = self.intern_compound_type_spec(array, [], None);
+        let signature = self.function_type([symbol, type_spec, type_spec, int], array_spec);
+        let new = self.intern_symbol("new");
+        let definition = &mut self
+            .definitions
+            .get_mut(&array)
+            .expect("array builtin exists")[0]
+            .value;
+        definition.layout.size = 16;
+        definition.layout.dynamic = true;
+        definition.fields = fields;
+        definition.methods.push(MethodDefinition {
+            name: new,
+            signature,
+            slot: 0,
+            defined_in: array,
+            private: false,
+            no_virtual: false,
+            overrides_parent: true,
+            span: None,
+        });
+    }
+
+    fn install_type_fields(&mut self, type_type: Type, symbol: Type, function: Type) {
+        let symbol_type = self.intern_compound_type_spec(symbol, [], None);
+        let type_spec = self.intern_compound_type_spec(type_type, [], None);
+        let uint16 = self.intern_type_spec("uint16");
+        let function_type = self.intern_compound_type_spec(function, [], None);
+        let names_and_types = [
+            ("symbol", symbol_type, POINTER_SIZE),
+            ("parent", type_spec, POINTER_SIZE + 4),
+            ("size", uint16, POINTER_SIZE + 8),
+            ("psize", uint16, POINTER_SIZE + 10),
+            ("heap-base", uint16, POINTER_SIZE + 12),
+            ("allocated-length", uint16, POINTER_SIZE + 14),
+        ];
+        let mut fields = names_and_types
+            .into_iter()
+            .map(|(name, field_type, offset)| {
+                let layout = self
+                    .layout(self.type_spec_base(field_type), &Visibility::unrestricted())
+                    .expect("builtin field type has a layout");
+                let (size, alignment) = if layout.kind.is_reference() {
+                    (POINTER_SIZE, POINTER_SIZE)
+                } else {
+                    (layout.load_size, layout.alignment)
+                };
+                FieldDefinition {
+                    name: self.intern_symbol(name),
+                    field_type,
+                    offset,
+                    size,
+                    alignment,
+                    array_size: None,
+                    dynamic: false,
+                    overlay: false,
+                    inline: false,
+                    print_as: PrintAs::Default,
+                    accessor: true,
+                    replaces_parent: false,
+                    access: FieldAccess::Public,
+                    span: None,
+                }
+            })
+            .collect::<Vec<_>>();
+        fields.push(FieldDefinition {
+            name: self.intern_symbol("method-table"),
+            field_type: function_type,
+            offset: POINTER_SIZE + RUNTIME_TYPE_METHODS_OFFSET,
+            size: 0,
+            alignment: POINTER_SIZE,
+            array_size: None,
+            dynamic: true,
+            overlay: false,
+            inline: false,
+            print_as: PrintAs::Default,
+            accessor: true,
+            replaces_parent: false,
+            access: FieldAccess::Public,
+            span: None,
+        });
+        let definition = &mut self
+            .definitions
+            .get_mut(&type_type)
+            .expect("type builtin exists")[0]
+            .value;
+        definition.layout.size = POINTER_SIZE + RUNTIME_TYPE_METHODS_OFFSET;
+        definition.layout.dynamic = true;
+        definition.fields = fields;
+    }
+
     fn install_object_methods(&mut self, object: Type) {
+        let object_spec = self.intern_type_spec("object");
         let symbol = self.intern_type_spec("symbol");
         let type_type = self.intern_type_spec("type");
         let int = self.intern_type_spec("int");
         let method_type = self.intern_type_spec("_type_");
         let none = self.intern_type_spec("none");
-        let signatures = [
+        let signatures: [(&str, Vec<TypeSpec>, TypeSpec); OBJECT_METHOD_COUNT as usize] = [
             ("new", vec![symbol, type_type, int], method_type),
             ("delete", vec![method_type], none),
             ("print", vec![method_type], method_type),
@@ -2171,6 +2416,12 @@ impl TypeSystem {
             ("length", vec![method_type], int),
             ("asize-of", vec![method_type], int),
             ("copy", vec![method_type, symbol], method_type),
+            ("relocate", vec![method_type, int], method_type),
+            (
+                "mem-usage",
+                vec![method_type, object_spec, int],
+                method_type,
+            ),
         ];
         let methods: Vec<MethodDefinition> = signatures
             .into_iter()
@@ -2460,10 +2711,10 @@ mod tests {
         definition.add_method(MethodDeclaration::new(draw, signature));
         definition.add_method(MethodDeclaration::new(update, signature));
         let definition = types.define_type(1, definition, &visibility).unwrap();
-        assert_eq!(definition.methods[0].slot, 7);
+        assert_eq!(definition.methods[0].slot, 9);
         assert!(definition.methods[0].overrides_parent);
-        assert_eq!(definition.methods[1].slot, 8);
-        assert_eq!(definition.method_count, 9);
+        assert_eq!(definition.methods[1].slot, 10);
+        assert_eq!(definition.method_count, 11);
     }
 
     #[test]
@@ -2514,6 +2765,57 @@ mod tests {
         assert!(deref.sign_extend);
         assert_eq!(deref.stride, 4);
         assert_eq!(deref.load_size, Some(4));
+    }
+
+    #[test]
+    fn object_method_layout_matches_jak1_kscheme() {
+        assert_eq!(RUNTIME_TYPE_METHODS_OFFSET, 16);
+        assert_eq!(POINTER_SIZE, 4);
+        assert_eq!(OBJECT_METHOD_COUNT, 9);
+
+        let mut types = TypeSystem::new();
+        let visibility = Visibility::unrestricted();
+        let object = types.intern_type("object");
+        assert_eq!(
+            types.definition(object, &visibility).unwrap().method_count,
+            OBJECT_METHOD_COUNT
+        );
+        for (name, slot) in [
+            ("new", 0),
+            ("delete", 1),
+            ("print", 2),
+            ("inspect", 3),
+            ("length", 4),
+            ("asize-of", 5),
+            ("copy", 6),
+            ("relocate", 7),
+            ("mem-usage", 8),
+        ] {
+            let method = types.intern_symbol(name);
+            assert_eq!(
+                types.method_slot(object, method, &visibility).unwrap(),
+                slot
+            );
+        }
+
+        let type_type = types.intern_type("type");
+        let method_table = types.intern_symbol("method-table");
+        let type_offset = types.layout(type_type, &visibility).unwrap().offset;
+        let field = types
+            .lookup_field(type_type, method_table, &visibility)
+            .unwrap();
+        assert_eq!(
+            field.field.offset - type_offset,
+            RUNTIME_TYPE_METHODS_OFFSET
+        );
+        assert!(field.field.dynamic);
+        let method_table_type = field.result_type;
+        let deref = types
+            .deref_info(method_table_type, &visibility)
+            .unwrap()
+            .unwrap();
+        assert!(deref.memory_deref);
+        assert_eq!(deref.stride, POINTER_SIZE);
     }
 
     #[test]

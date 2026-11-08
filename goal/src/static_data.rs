@@ -57,6 +57,7 @@ pub enum FixupTarget {
     Label(StaticLabelId),
     Function(FunctionId),
     Symbol(SymbolId),
+    Type { name: SymbolId, methods: u8 },
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -68,7 +69,24 @@ pub struct StaticFixup {
     pub span: Option<SpanInfo>,
 }
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum PoolEntryKind {
+    String,
+    Float(u32),
+    Integer(u64),
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct PoolEntry {
+    pub label: StaticLabelId,
+    pub segment: Segment,
+    pub start: u32,
+    pub end: u32,
+    pub alignment: u32,
+    pub kind: PoolEntryKind,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct StaticSection {
     bytes: Vec<u8>,
     alignment: u32,
@@ -147,13 +165,14 @@ impl StaticSection {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Clone, Debug, Default)]
 pub struct StaticData {
     pub main: StaticSection,
     pub debug: StaticSection,
     pub top_level: StaticSection,
     pub labels: Vec<StaticLabel>,
     pub fixups: Vec<StaticFixup>,
+    pub pool_entries: Vec<PoolEntry>,
 }
 
 impl StaticData {
@@ -193,6 +212,21 @@ impl StaticData {
             return Err("static fixup is outside its section".to_owned());
         }
         self.fixups.push(fixup);
+        Ok(())
+    }
+
+    pub fn add_pool_entry(&mut self, entry: PoolEntry) -> Result<(), String> {
+        if entry.start > entry.end
+            || entry.end as usize > self.section(entry.segment).len()
+            || !entry.alignment.is_power_of_two()
+            || self
+                .labels
+                .get(entry.label.0 as usize)
+                .is_none_or(|label| label.segment != entry.segment)
+        {
+            return Err("invalid static pool entry".to_owned());
+        }
+        self.pool_entries.push(entry);
         Ok(())
     }
 }

@@ -18,6 +18,8 @@
 #define PAD_RPC_GET_MOD_VERSION 18
 #define PAD_RPC_NOOP 19
 #define PAD_RPC_SET_DEBUG 20
+#define PAD_RPC_CAPTURE_INIT 21
+#define PAD_RPC_CAPTURE_SHUTDOWN 22
 
 int pad_rpc_init(int priority);
 #endif

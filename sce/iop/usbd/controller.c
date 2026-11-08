@@ -1,5 +1,11 @@
+#include "sce/iop/sysclib/string.h"
+#include "sce/iop/thbase/thread.h"
 #include "sce/iop/usbd/internal.h"
 #include "sce/iop/usbd/scheduling.h"
+
+#if USBD_DRIVER_VERSION >= 0x010000
+static void* usb_controller_memory;
+#endif
 
 #define USB_ENDPOINT_CONTROL 0
 #define USB_ENDPOINT_ISOCHRONOUS 1
@@ -52,6 +58,8 @@
 #define USB_INTERRUPT_MASTER 0x80000000
 #define IOP_BOOT_ROM_BASE 0xbfc00000
 #define USB_COMMAND_RESET 1
+#define USB_OHCI_ENABLE_LISTS 0x3c
+#define USB_RESET_SETTLE_MICROSECONDS 2000
 #define USB_RESET_POLL_LIMIT 1000
 #define USB_OHCI_BASE 0xbf801600
 #define USB_DMA_PRIORITY (*(volatile u_int*)0xbf801570)
@@ -114,6 +122,9 @@ struct UsbDevice* usb_attach_child(struct UsbDevice* parent, u_int port) {
     device->driver = 0;
     device->status = 1;
     device->reset_pending = 0;
+#if USBD_DRIVER_VERSION >= 0x010000
+    device->power_state = 0;
+#endif
     device->child_tail = 0;
     device->child_head = 0;
     device->parent = parent;
@@ -412,9 +423,100 @@ void usb_unlink_endpoint(int index, struct UsbEndpointDescriptor* descriptor) {
   }
 }
 
+#if USBD_DRIVER_VERSION >= 0x010000
+#define USB_PERIODIC_FRAMES 32
+#define USB_PACKET_OVERHEAD 13
+#define USB_FULL_SPEED_PACKET_BYTES 64
+
+int usb_reserve_bandwidth(struct UsbEndpoint* endpoint, UsbEndpointInfo* info, int low_speed) {
+  int packet_size = info->max_packet_low + (info->max_packet_high << 8);
+  int* loads = usb_host->periodic_load;
+  int polling_interval = info->interval;
+  int slot;
+  int interval, frames, schedule, phase, best_load, i, j, load;
+  if (polling_interval >= 32) {
+    schedule = 31;
+    frames = 1;
+    interval = 32;
+  } else if (polling_interval >= 16) {
+    schedule = 15;
+    frames = 2;
+    interval = 16;
+  } else if (polling_interval >= 8) {
+    schedule = 7;
+    frames = 4;
+    interval = 8;
+  } else if (polling_interval >= 4) {
+    schedule = 3;
+    frames = 8;
+    interval = 4;
+  } else if (polling_interval >= 2) {
+    schedule = 1;
+    frames = 16;
+    interval = 2;
+  } else {
+    schedule = 0;
+    frames = 32;
+    interval = 1;
+  }
+  phase = 0;
+  if (interval > 1) {
+    phase = -1;
+    best_load = 0;
+    for (i = 0; i < interval; ++i) {
+      slot = i;
+      load = 0;
+      for (j = 0; j < frames; ++j, slot += interval)
+        load += loads[slot];
+      if (phase < 0 || load < best_load) {
+        phase = i;
+        best_load = load;
+      }
+    }
+    schedule += phase;
+  }
+  if (packet_size > USB_FULL_SPEED_PACKET_BYTES)
+    packet_size = USB_FULL_SPEED_PACKET_BYTES;
+  load = packet_size + USB_PACKET_OVERHEAD;
+  endpoint->schedule_phase = phase;
+  endpoint->schedule_frames = frames;
+  endpoint->schedule_interval = interval;
+  endpoint->schedule_cost = load;
+  if (low_speed)
+    load <<= 3;
+  slot = phase;
+  for (j = 0; j < frames; ++j, slot += interval)
+    loads[slot] += load;
+  return schedule;
+}
+
+void usb_release_bandwidth(struct UsbEndpoint* endpoint, int low_speed) {
+  int* loads = usb_host->periodic_load;
+  int cost = endpoint->schedule_cost;
+  int frames = endpoint->schedule_frames;
+  int interval = endpoint->schedule_interval;
+  int phase = endpoint->schedule_phase;
+  int i;
+  int* load;
+  if (low_speed)
+    cost <<= 3;
+  for (i = 0; i < frames; ++i, phase += interval) {
+    load = &loads[phase];
+    *load -= cost;
+    if (*load < 0)
+      *load = 0;
+  }
+}
+#endif
+
 struct UsbEndpoint* usb_open_endpoint(struct UsbDevice* device,
                                       UsbEndpointInfo* info,
+#if USBD_DRIVER_VERSION >= 0x010000
+                                      u_int input_alignment) {
+  register u_int alignment asm("$21") = input_alignment;
+#else
                                       u_int alignment) {
+#endif
   void* transfer = 0;
   int schedule = 0;
   struct UsbEndpoint* endpoint = usb_alloc_endpoint(device, alignment);
@@ -424,6 +526,10 @@ struct UsbEndpoint* usb_open_endpoint(struct UsbDevice* device,
   u_int flags;
   u_int address;
   u_int direction;
+#if USBD_DRIVER_VERSION >= 0x010000
+  // Keep the alignment mode in its original saved register across allocation.
+  asm("" : "+r"(alignment));
+#endif
   if (!endpoint)
     return transfer;
   descriptor = endpoint->descriptor;
@@ -451,6 +557,9 @@ struct UsbEndpoint* usb_open_endpoint(struct UsbDevice* device,
           packet_size = 62;
         break;
       case USB_ENDPOINT_INTERRUPT:
+#if USBD_DRIVER_VERSION >= 0x010000
+        schedule = usb_reserve_bandwidth(endpoint, info, device->low_speed);
+#else
         if (info->interval >= 32)
           schedule = 31;
         else if (info->interval >= 16)
@@ -461,6 +570,7 @@ struct UsbEndpoint* usb_open_endpoint(struct UsbDevice* device,
           schedule = 3;
         else
           schedule = info->interval >= 2;
+#endif
         if (!(info->address & USB_ENDPOINT_IN) && !alignment && packet_size >= 63)
           packet_size = 62;
         break;
@@ -537,6 +647,9 @@ void usb_cleanup_endpoint(struct UsbEndpoint* endpoint) {
       endpoint->request_head = neighbor;
     usb_free_request(request);
   }
+#if USBD_DRIVER_VERSION >= 0x010000
+  usb_release_bandwidth(endpoint, endpoint->device->low_speed);
+#endif
   if (endpoint->scheduled) {
     struct UsbEndpoint* link = endpoint->schedule_next;
     struct UsbEndpoint* neighbor = endpoint->schedule_previous;
@@ -727,14 +840,46 @@ int usb_schedule_iso(struct UsbEndpoint* endpoint) {
     frame = usb_host->communication->frame_number + 2;
   else
     frame = endpoint->next_frame;
+#if USBD_DRIVER_VERSION >= 0x010000
+  {
+    UsbMultiIsoRequest* multi = &request->multi_iso;
+    u_short is_multi = multi->packet_count != 0;
+    int frames = 1;
+    if (is_multi)
+      frames = (u_short)multi->packet_count;
+    frame += (u_short)request->wait_frames;
+    endpoint->next_frame = frames + frame;
+    if (is_multi) {
+      u_int buffer = (u_int)request->buffer;
+      u_int offset;
+      int i;
+      u_int control = frame | USB_ISO_NOT_ACCESSED;
+      transfer->control = ((multi->packet_count - 1) << 24) | control;
+      transfer->buffer_page = (void*)(buffer & ~4095);
+      transfer->next = tail;
+      transfer->buffer_end =
+          buffer && request->length > 0 ? (u_char*)request->buffer + request->length - 1 : 0;
+      offset = (buffer & 4095) | USB_ISO_PACKET_NOT_ACCESSED;
+      for (i = 0; i < multi->packet_count; ++i) {
+        transfer->packet_status[i] = offset;
+        offset += multi->packets[i] & 0x7ff;
+      }
+    } else {
+#else
   frame += (u_short)request->wait_frames;
   endpoint->next_frame = frame + 1;
-  transfer->control = frame | USB_ISO_NOT_ACCESSED;
-  transfer->buffer_page = (void*)((u_int)request->buffer & ~4095);
-  transfer->next = tail;
-  transfer->buffer_end =
-      request->buffer && request->length > 0 ? (u_char*)request->buffer + request->length - 1 : 0;
-  transfer->packet_status[0] = ((u_int)request->buffer & 4095) | USB_ISO_PACKET_NOT_ACCESSED;
+#endif
+      transfer->control = frame | USB_ISO_NOT_ACCESSED;
+      transfer->buffer_page = (void*)((u_int)request->buffer & ~4095);
+      transfer->next = tail;
+      transfer->buffer_end = request->buffer && request->length > 0
+                                 ? (u_char*)request->buffer + request->length - 1
+                                 : 0;
+      transfer->packet_status[0] = ((u_int)request->buffer & 4095) | USB_ISO_PACKET_NOT_ACCESSED;
+#if USBD_DRIVER_VERSION >= 0x010000
+    }
+  }
+#endif
   usb_host->iso_requests[transfer - usb_host->iso_descriptors] = request;
   descriptor->tail = tail;
   if (!endpoint->request_head && endpoint->scheduled) {
@@ -815,6 +960,13 @@ int usb_schedule_endpoint(struct UsbEndpoint* endpoint) {
     return usb_schedule_data(endpoint);
 }
 
+#if USBD_DRIVER_VERSION >= 0x010000
+void usb_reset_root_ports(void) {
+  usb_host->registers->port_status[0] = USB_OHCI_PORT_RESET;
+  usb_host->registers->port_status[1] = USB_OHCI_PORT_RESET;
+}
+#endif
+
 int usb_start_device_reset(struct UsbDevice* device) {
   if (usb_host->reset_active) {
     device->status = USB_DEVICE_WAIT_RESET;
@@ -837,7 +989,13 @@ int usb_reset_next_device(struct UsbDevice* parent) {
       usb_start_device_reset(child);
       return 1;
     }
-    if (child->child_head && child->status == USB_DEVICE_READY && usb_reset_next_device(child))
+    if (child->child_head &&
+#if USBD_DRIVER_VERSION >= 0x010000
+        (u_char)(child->status - USB_DEVICE_READY) < 2 &&
+#else
+        child->status == USB_DEVICE_READY &&
+#endif
+        usb_reset_next_device(child))
       return 1;
   }
   return 0;
@@ -1038,15 +1196,27 @@ void usb_complete_iso(struct UsbIsoDescriptor* transfer) {
   request = take_iso_request(transfer);
   if (!request)
     return;
+#if USBD_DRIVER_VERSION >= 0x010000
+  if (request->multi_iso.packet_count)
+    bcopy(transfer->packet_status, request->multi_iso.packets, sizeof(request->multi_iso.packets));
+#endif
   usb_free_iso_descriptor(transfer);
   request->transferred = 0;
-  request->result = condition | (packet_condition << 4);
-  if (!condition && (!packet_condition || packet_condition == 9)) {
-    if ((request->endpoint->descriptor->control & 0x1800) == 0x1000)
-      request->transferred = bytes;
-    else
-      request->transferred = request->length;
+#if USBD_DRIVER_VERSION >= 0x010000
+  if (request->multi_iso.packet_count)
+    request->result = condition;
+  else {
+#endif
+    request->result = condition | (packet_condition << 4);
+    if (!condition && (!packet_condition || packet_condition == 9)) {
+      if ((request->endpoint->descriptor->control & 0x1800) == 0x1000)
+        request->transferred = bytes;
+      else
+        request->transferred = request->length;
+    }
+#if USBD_DRIVER_VERSION >= 0x010000
   }
+#endif
   {
     request->previous = completed.tail;
     if (request->previous)
@@ -1192,10 +1362,15 @@ void usb_cycle_interrupts(void) {
 }
 
 int usb_reset_controller(volatile struct UsbHostRegisters* registers) {
-  int attempts = 0;
+  int attempts;
   registers->interrupt_disable = -1;
+#if USBD_DRIVER_VERSION >= 0x010100
+  registers->control &= ~USB_OHCI_ENABLE_LISTS;
+  DelayThread(USB_RESET_SETTLE_MICROSECONDS);
+#endif
   registers->command_status = USB_COMMAND_RESET;
   registers->control = 0;
+  attempts = 0;
   while (registers->command_status & USB_COMMAND_RESET) {
     if (++attempts >= USB_RESET_POLL_LIMIT)
       return -1;
@@ -1203,8 +1378,6 @@ int usb_reset_controller(volatile struct UsbHostRegisters* registers) {
   }
   return 0;
 }
-
-void bzero(void* memory, int size);
 
 int usb_initialize_controller(void) {
   volatile struct UsbHostRegisters* registers = (void*)USB_OHCI_BASE;
@@ -1245,6 +1418,9 @@ int usb_initialize_controller(void) {
     usb_free_memory(mappings);
     return -1;
   }
+#if USBD_DRIVER_VERSION >= 0x010000
+  usb_controller_memory = mappings;
+#endif
   bzero(mappings, size);
   communication = (void*)mappings;
   transfer_count = usb_transfer_limit;
@@ -1301,6 +1477,9 @@ int usb_initialize_controller(void) {
     ++device;
   }
   usb_host->root = usb_attach_child(0, 0);
+#if USBD_DRIVER_VERSION >= 0x010000
+  usb_host->root->power_state = 2;
+#endif
   usb_attach_child(usb_host->root, 1);
   usb_attach_child(usb_host->root, 2);
   usb_host->requests = request;
@@ -1361,3 +1540,21 @@ int usb_initialize_controller(void) {
 }
 
 struct UsbHostState* usb_host = 0;
+
+#if USBD_DRIVER_VERSION >= 0x010000
+void usb_shutdown_controller(void) {
+  struct UsbDevice* device;
+  struct UsbReportDescriptor* report;
+  struct UsbReportDescriptor* next;
+#if USBD_DRIVER_VERSION >= 0x010100
+  ((volatile struct UsbHostRegisters*)USB_OHCI_BASE)->control &= ~USB_OHCI_ENABLE_LISTS;
+#endif
+  for (device = usb_host->free_device_head; device; device = device->next) {
+    for (report = device->reports; report; report = next) {
+      next = report->next;
+      usb_free_memory(report);
+    }
+  }
+  usb_free_memory(usb_controller_memory);
+}
+#endif

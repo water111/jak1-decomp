@@ -1,5 +1,6 @@
 #ifndef SCE_IOP_PADMAN_STATE_H
 #define SCE_IOP_PADMAN_STATE_H
+#include "sce/iop/padman/padman.h"
 #include "sce/iop/padman/transfer.h"
 #define PAD_TASK_UPDATE 1
 #define PAD_TASK_MAIN_MODE 4
@@ -51,8 +52,14 @@ typedef struct PadState {
   int update_thread, query_thread, reserved_thread;
   int main_mode_thread, act_align_thread, button_info_thread, vref_thread;
   int event;
+#if PADMAN_VERSION >= 0x0403
+  u_short port, slot;
+  u_short current_task, run_task;
+  int task_thread;
+#else
   short port, slot;
   int current_task, run_task, task_thread;
+#endif
   u_int status_bit;
   u_int reserved1c0, wait_for_close;
 } PadState;

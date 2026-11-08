@@ -1,0 +1,35 @@
+Libname libsd
+Version 1.5
+Flags 0x0000
+
+Entry start	# 000
+Entry -	# 001
+Entry sceSdQuit	# 002
+Entry -	# 003
+Entry sceSdInit	# 004
+Entry sceSdSetParam	# 005
+Entry sceSdGetParam	# 006
+Entry sceSdSetSwitch	# 007
+Entry sceSdGetSwitch	# 008
+Entry sceSdSetAddr	# 009
+Entry sceSdGetAddr	# 010
+Entry sceSdSetCoreAttr	# 011
+Entry sceSdGetCoreAttr	# 012
+Entry sceSdNote2Pitch	# 013
+Entry sceSdPitch2Note	# 014
+Entry sceSdProcBatch	# 015
+Entry sceSdProcBatchEx	# 016
+Entry sceSdVoiceTrans	# 017
+Entry sceSdBlockTrans	# 018
+Entry sceSdVoiceTransStatus	# 019
+Entry sceSdBlockTransStatus	# 020
+Entry sceSdSetTransCallback	# 021
+Entry sceSdSetIRQCallback	# 022
+Entry sceSdSetEffectAttr	# 023
+Entry sceSdGetEffectAttr	# 024
+Entry sceSdClearEffectWorkArea	# 025
+Entry sceSdSetTransIntrHandler	# 026
+Entry sceSdSetSpu2IntrHandler	# 027
+Entry sceSdGetTransIntrHandlerArgument # 028
+Entry sceSdGetSpu2IntrHandlerArgument # 029
+Entry sceSdStopTrans # 030

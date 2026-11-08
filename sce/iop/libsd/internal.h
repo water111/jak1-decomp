@@ -3,13 +3,44 @@
 
 #include "sce/iop/libsd/libsd.h"
 
+#ifndef LIBSD_VERSION
+#define LIBSD_VERSION 0x0104
+#endif
+
+extern unsigned int libsd_stub[];
+void sd_init_bus(void);
+void sd_init_module_state(void);
+void sd_init_transfer_state(void);
+#define SD_ERROR_EVENT_FLAG (-301)
+#define SD_ERROR_TRANSFER_BUSY (-210)
+#define SD_ERROR_TRANSFER_PENDING (-201)
+#define SD_ERROR_INTERRUPT_CONTEXT (-202)
+#define SD_ERROR_INVALID_MODE (-100)
+#define SD_TRANSFER_DIRECTION_MASK 0xc00
+#define SD_TRANSFER_DIRECTION_WRITE 0x400
+#define SD_TRANSFER_DIRECTION_READ 0x800
+#define SD_TRANSFER_TYPE_MASK 0x300
+#define SD_TRANSFER_TYPE_VOICE 0x100
+#define SD_TRANSFER_TYPE_BLOCK 0x200
+#define SD_TRANSFER_VOICE_WRITE 0x500
+#define SD_TRANSFER_VOICE_READ 0x900
+int sd_voice_write_io(void* memory, u_int size, int core);
+int sd_dma_control(int command, ...);
+
 #define SD_P_CORE_ATTR 0x2300
 #define SD_CORE_MASK 1
 #define SD_CORE_ATTR_MASK 0xe
 #define SD_TRANS_MODE_MASK 3
 #define SD_TRANSFER_EVENT_DONE 1
+#if LIBSD_VERSION >= 0x0301
+#define SD_TRANSFER_BLOCK 0x600
+#define SD_TRANSFER_BLOCK_READ 0xa00
+#define SD_TRANSFER_READ 0x800
+#else
 #define SD_TRANSFER_BLOCK 0x100
+#define SD_TRANSFER_BLOCK_READ 0x300
 #define SD_TRANSFER_READ 0x200
+#endif
 #define SD_TRANSFER_LOOP 0x1000
 #define SD_TRANSFER_CORE_MASK 0xff
 #define SD_EFFECT_CLEAR_BUFFER_SIZE 1024
@@ -33,6 +64,9 @@
 #define SD_DMA_SET_ADDRESS 2
 #define SD_DMA_START 3
 #define SD_DMA_CHECK_BUSY 4
+#define SD_DMA_STOP 10
+#define SD_DMA_READ 5
+#define SD_DMA_WRITE 6
 #define SD_DMA_COMMAND_MASK 0xf
 #define SD_DMA_CORE_SHIFT 4
 
@@ -51,7 +85,11 @@ extern SdTransferInterrupt sd_transfer_interrupts[2];
 
 extern SdEffectAttr sd_effect_attrs[2];
 extern volatile int sd_transfer_status[2];
+#if LIBSD_VERSION >= 0x0301
+extern volatile int sd_transfer_pending[2];
+#else
 extern int sd_transfer_pending[2];
+#endif
 extern volatile int sd_transfer_events[2];
 extern int sd_transfer_active[2];
 extern u_int sd_effect_addresses[2];
@@ -108,6 +146,22 @@ void sd_delay(int count);
 #define SD_EFFECT_UPDATE_VLIN 0x40000000
 #define SD_EFFECT_UPDATE_VRIN 0x80000000
 
+#if LIBSD_VERSION >= 0x0303
+#define SD_EFFECT_CLEAR_SEGMENTS 97
+#define SD_REV_MODE_CLEAR_CHANNEL_1 0x200
+
+typedef struct {
+  volatile u_int address;
+  volatile u_int size;
+} SdEffectClearSegment;
+
+extern volatile int sd_effect_clear_count[2];
+extern volatile int sd_effect_clear_index[2];
+extern SdEffectClearSegment sd_effect_clear_segments[2][SD_EFFECT_CLEAR_SEGMENTS];
+extern sceSdTransIntrHandler volatile sd_effect_clear_handlers[2];
+int sd_continue_effect_clear(int core, void* argument);
+#endif
+
 typedef struct {
   u_int mask;
   u_short dAPF1;
@@ -144,8 +198,13 @@ typedef struct {
   u_short vRIN;
 } SdEffectRegisters;
 
+#if LIBSD_VERSION >= 0x0301
+void sd_set_effect_register(int core, int reg, int value);
+void sd_set_effect_registers(int core, SdEffectRegisters* registers);
+#else
 void sd_set_effect_register(int reg, int value);
 void sd_set_effect_registers(SdEffectRegisters* registers);
+#endif
 
 int sd_block_write(void* memory, int size, u_int core, u_int mode);
 int sd_block_read(void* memory, int size, int core, u_int mode);

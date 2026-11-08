@@ -1,3 +1,5 @@
+use crate::object::SymbolId;
+use crate::static_data::StaticLabelId;
 use crate::type_system::{RegisterClass, TypeSpec};
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
@@ -19,9 +21,6 @@ pub struct VirtualRegister {
     pub class: RegisterClass,
     /// Creation-order number within this register class.
     pub number: u32,
-    /// `rlet` without an explicit hardware register keeps all definitions in
-    /// one allocation web.
-    pub force_single_web: bool,
 }
 
 impl VirtualRegister {
@@ -69,6 +68,27 @@ pub enum Gpr {
     Sp = 29,
     Fp = 30,
     Ra = 31,
+}
+
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum Cop0Register {
+    Debug,
+    DataAddressBreakpoint,
+    DataAddressBreakpointMask,
+}
+
+impl Cop0Register {
+    pub const fn number(self) -> u8 {
+        24
+    }
+
+    pub const fn select(self) -> u8 {
+        match self {
+            Self::Debug => 0,
+            Self::DataAddressBreakpoint => 4,
+            Self::DataAddressBreakpointMask => 5,
+        }
+    }
 }
 
 impl Gpr {
@@ -156,6 +176,7 @@ pub enum PhysicalRegister {
 }
 
 impl PhysicalRegister {
+    pub const ZERO: Self = Self::Gpr(Gpr::R0);
     pub const RET: Self = Self::Gpr(Gpr::V0);
     pub const CALL: Self = Self::Gpr(Gpr::T9);
 
@@ -268,6 +289,10 @@ pub enum BranchCondition {
     Always,
     Zero(Register),
     NonZero(Register),
+    Negative(Register),
+    NonNegative(Register),
+    Positive(Register),
+    NonPositive(Register),
     Equal(Register, Register),
     NotEqual(Register, Register),
 }
@@ -278,6 +303,70 @@ pub enum BranchDelay {
     Normal,
     /// The following instruction executes only when the branch is taken.
     Likely,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ArithmeticOperation {
+    Add,
+    Subtract,
+    Multiply,
+    Divide,
+    Remainder,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ShiftOperation {
+    Left,
+    LogicalRight,
+    ArithmeticRight,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ConditionalMoveOperation {
+    Zero,
+    NonZero,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum IntegerComparison {
+    LessThan,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum IntegerBitwiseOperation {
+    Or,
+    And,
+    Nor,
+    Xor,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum MemoryLoad {
+    SignedByte,
+    UnsignedByte,
+    SignedHalfword,
+    UnsignedHalfword,
+    SignedWord,
+    UnsignedWord,
+    Doubleword,
+    Quadword,
+    FloatWord,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum MemoryStore {
+    Byte,
+    Halfword,
+    Word,
+    Doubleword,
+    Quadword,
+    FloatWord,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DoublewordPart {
+    Low,
+    High,
 }
 
 /// Register metadata computed once per instruction by the allocator.
@@ -292,6 +381,54 @@ pub enum IrInstruction {
     LoadConstant {
         destination: Register,
         value: i64,
+    },
+    LoadFunctionHigh {
+        destination: Register,
+    },
+    LoadFunctionLow {
+        destination: Register,
+        source: Register,
+        function: FunctionId,
+    },
+    GetSymbolValue {
+        destination: Register,
+        symbol: SymbolId,
+    },
+    GetSymbol {
+        destination: Register,
+        symbol: SymbolId,
+    },
+    LoadFloatConstant {
+        destination: Register,
+        label: StaticLabelId,
+    },
+    LoadConstant64 {
+        destination: Register,
+        label: StaticLabelId,
+    },
+    LoadStaticAddress {
+        destination: Register,
+        label: StaticLabelId,
+    },
+    LoadMemory {
+        operation: MemoryLoad,
+        destination: Register,
+        base: Register,
+        offset: i16,
+    },
+    StoreMemory {
+        operation: MemoryStore,
+        source: Register,
+        base: Register,
+        offset: i16,
+    },
+    StoreSymbol {
+        source: Register,
+        symbol: SymbolId,
+    },
+    MoveToCop0 {
+        source: Register,
+        register: Cop0Register,
     },
     /// `must_emit` excludes early-return and explicit `rlet` copies from
     /// coalescing. Delay-slot moves are excluded automatically.
@@ -311,15 +448,75 @@ pub enum IrInstruction {
         source: Register,
     },
     ConditionalMove {
+        operation: ConditionalMoveOperation,
         destination: Register,
         source: Register,
         condition: Register,
+    },
+    IntegerArithmetic {
+        operation: ArithmeticOperation,
+        signed: bool,
+        destination: Register,
+        left: Register,
+        right: Register,
+    },
+    IntegerAddImmediate {
+        destination: Register,
+        source: Register,
+        value: i16,
+    },
+    FloatArithmetic {
+        operation: ArithmeticOperation,
+        destination: Register,
+        left: Register,
+        right: Register,
+    },
+    VariableShift {
+        operation: ShiftOperation,
+        destination: Register,
+        value: Register,
+        amount: Register,
+    },
+    IntegerShiftImmediate {
+        operation: ShiftOperation,
+        destination: Register,
+        value: Register,
+        amount: u8,
+    },
+    IntegerCompare {
+        comparison: IntegerComparison,
+        signed: bool,
+        destination: Register,
+        left: Register,
+        right: Register,
+    },
+    IntegerBitwise {
+        operation: IntegerBitwiseOperation,
+        destination: Register,
+        left: Register,
+        right: Register,
+    },
+    IntegerBitwiseImmediate {
+        operation: IntegerBitwiseOperation,
+        destination: Register,
+        source: Register,
+        value: u16,
+    },
+    Gpr128Upper64 {
+        destination: Register,
+        source: Register,
+    },
+    ExtractWord {
+        part: DoublewordPart,
+        destination: Register,
+        source: Register,
     },
     /// Uses CALL and the first `argument_count` argument registers and defines
     /// all caller-saved registers. The following instruction is its delay slot.
     Call {
         argument_count: u8,
     },
+    CallDelay,
     /// Copies a value to the ABI return register. Register allocation normally
     /// coalesces the value directly into that register.
     Return {
@@ -332,16 +529,153 @@ pub enum IrInstruction {
         target: LabelId,
         delay: BranchDelay,
     },
+    /// Pad with EE nops until the following instruction has the requested
+    /// power-of-two bit alignment.
+    Align {
+        bits: u16,
+    },
     Nop,
 }
 
 impl IrInstruction {
+    pub fn move_register(destination: impl Into<Register>, source: impl Into<Register>) -> Self {
+        Self::Move {
+            destination: destination.into(),
+            source: source.into(),
+            must_emit: false,
+        }
+    }
+
+    pub fn branch_likely(condition: BranchCondition, target: LabelId) -> Self {
+        Self::Branch {
+            condition,
+            target,
+            delay: BranchDelay::Likely,
+        }
+    }
+
+    pub fn variable_shift(
+        operation: ShiftOperation,
+        destination: impl Into<Register>,
+        value: impl Into<Register>,
+        amount: impl Into<Register>,
+    ) -> Self {
+        Self::VariableShift {
+            operation,
+            destination: destination.into(),
+            value: value.into(),
+            amount: amount.into(),
+        }
+    }
+
+    pub fn integer_subtract(
+        destination: impl Into<Register>,
+        left: impl Into<Register>,
+        right: impl Into<Register>,
+    ) -> Self {
+        Self::IntegerArithmetic {
+            operation: ArithmeticOperation::Subtract,
+            signed: true,
+            destination: destination.into(),
+            left: left.into(),
+            right: right.into(),
+        }
+    }
+
+    pub fn integer_compare(
+        comparison: IntegerComparison,
+        signed: bool,
+        destination: impl Into<Register>,
+        left: impl Into<Register>,
+        right: impl Into<Register>,
+    ) -> Self {
+        Self::IntegerCompare {
+            comparison,
+            signed,
+            destination: destination.into(),
+            left: left.into(),
+            right: right.into(),
+        }
+    }
+
+    pub fn integer_bitwise(
+        operation: IntegerBitwiseOperation,
+        destination: impl Into<Register>,
+        left: impl Into<Register>,
+        right: impl Into<Register>,
+    ) -> Self {
+        Self::IntegerBitwise {
+            operation,
+            destination: destination.into(),
+            left: left.into(),
+            right: right.into(),
+        }
+    }
+
+    pub fn conditional_move(
+        operation: ConditionalMoveOperation,
+        destination: impl Into<Register>,
+        source: impl Into<Register>,
+        condition: impl Into<Register>,
+    ) -> Self {
+        Self::ConditionalMove {
+            operation,
+            destination: destination.into(),
+            source: source.into(),
+            condition: condition.into(),
+        }
+    }
+
+    pub const fn requires_frame_pointer(&self) -> bool {
+        matches!(
+            self,
+            Self::LoadFloatConstant { .. }
+                | Self::LoadConstant64 { .. }
+                | Self::LoadStaticAddress { .. }
+        )
+    }
+
     pub fn register_effects(&self) -> RegisterEffects {
         let mut effects = RegisterEffects::default();
         match self {
             Self::LoadConstant { destination, .. } => {
                 effects.definitions.push(*destination);
             }
+            Self::LoadFunctionHigh { destination } => {
+                effects.definitions.push(*destination);
+            }
+            Self::LoadFunctionLow {
+                destination,
+                source,
+                ..
+            } => {
+                effects.uses.push(*source);
+                effects.definitions.push(*destination);
+            }
+            Self::GetSymbolValue { destination, .. } | Self::GetSymbol { destination, .. } => {
+                effects.definitions.push(*destination);
+            }
+            Self::LoadFloatConstant { destination, .. } => {
+                effects.definitions.push(*destination);
+            }
+            Self::LoadConstant64 { destination, .. } => {
+                effects.definitions.push(*destination);
+            }
+            Self::LoadStaticAddress { destination, .. } => {
+                effects.definitions.push(*destination);
+            }
+            Self::LoadMemory {
+                destination, base, ..
+            } => {
+                effects.uses.push(*base);
+                effects.definitions.push(*destination);
+            }
+            Self::StoreMemory { source, base, .. } => {
+                effects.uses.push(*source);
+                effects.uses.push(*base);
+            }
+            Self::StoreSymbol { source, .. } => effects.uses.push(*source),
+            Self::MoveToCop0 { source, .. } => effects.uses.push(*source),
             Self::Move {
                 destination,
                 source,
@@ -365,8 +699,85 @@ impl IrInstruction {
                 destination,
                 source,
                 condition,
+                ..
             } => {
                 effects.uses.extend([*destination, *source, *condition]);
+                effects.definitions.push(*destination);
+            }
+            Self::IntegerArithmetic {
+                destination,
+                left,
+                right,
+                ..
+            }
+            | Self::FloatArithmetic {
+                destination,
+                left,
+                right,
+                ..
+            } => {
+                effects.uses.extend([*left, *right]);
+                effects.definitions.push(*destination);
+            }
+            Self::IntegerAddImmediate {
+                destination,
+                source,
+                ..
+            } => {
+                effects.uses.push(*source);
+                effects.definitions.push(*destination);
+            }
+            Self::VariableShift {
+                destination,
+                value,
+                amount,
+                ..
+            } => {
+                effects.uses.extend([*value, *amount]);
+                effects.definitions.push(*destination);
+            }
+            Self::IntegerShiftImmediate {
+                destination, value, ..
+            } => {
+                effects.uses.push(*value);
+                effects.definitions.push(*destination);
+            }
+            Self::IntegerCompare {
+                destination,
+                left,
+                right,
+                ..
+            } => {
+                effects.uses.extend([*left, *right]);
+                effects.definitions.push(*destination);
+            }
+            Self::IntegerBitwise {
+                destination,
+                left,
+                right,
+                ..
+            } => {
+                effects.uses.extend([*left, *right]);
+                effects.definitions.push(*destination);
+            }
+            Self::IntegerBitwiseImmediate {
+                destination,
+                source,
+                ..
+            } => {
+                effects.uses.push(*source);
+                effects.definitions.push(*destination);
+            }
+            Self::Gpr128Upper64 {
+                destination,
+                source,
+            }
+            | Self::ExtractWord {
+                destination,
+                source,
+                ..
+            } => {
+                effects.uses.push(*source);
                 effects.definitions.push(*destination);
             }
             Self::Call { argument_count } => {
@@ -384,20 +795,26 @@ impl IrInstruction {
                     .definitions
                     .extend(call_clobbers().map(Register::Physical));
             }
+            Self::CallDelay => {}
             Self::Return { value, register } => {
                 effects.uses.push(*value);
                 effects.definitions.push(Register::Physical(*register));
             }
             Self::Branch { condition, .. } => match condition {
                 BranchCondition::Always => {}
-                BranchCondition::Zero(register) | BranchCondition::NonZero(register) => {
+                BranchCondition::Zero(register)
+                | BranchCondition::NonZero(register)
+                | BranchCondition::Negative(register)
+                | BranchCondition::NonNegative(register)
+                | BranchCondition::Positive(register)
+                | BranchCondition::NonPositive(register) => {
                     effects.uses.push(*register);
                 }
                 BranchCondition::Equal(left, right) | BranchCondition::NotEqual(left, right) => {
                     effects.uses.extend([*left, *right]);
                 }
             },
-            Self::Nop => {}
+            Self::Align { .. } | Self::Nop => {}
         }
         effects
     }
@@ -419,6 +836,74 @@ impl IrInstruction {
             Self::LoadConstant { destination, value } => Self::LoadConstant {
                 destination: map_definition(*destination),
                 value: *value,
+            },
+            Self::LoadFunctionHigh { destination } => Self::LoadFunctionHigh {
+                destination: map_definition(*destination),
+            },
+            Self::LoadFunctionLow {
+                destination,
+                source,
+                function,
+            } => Self::LoadFunctionLow {
+                destination: map_definition(*destination),
+                source: map_use(*source),
+                function: *function,
+            },
+            Self::GetSymbolValue {
+                destination,
+                symbol,
+            } => Self::GetSymbolValue {
+                destination: map_definition(*destination),
+                symbol: *symbol,
+            },
+            Self::GetSymbol {
+                destination,
+                symbol,
+            } => Self::GetSymbol {
+                destination: map_definition(*destination),
+                symbol: *symbol,
+            },
+            Self::LoadFloatConstant { destination, label } => Self::LoadFloatConstant {
+                destination: map_definition(*destination),
+                label: *label,
+            },
+            Self::LoadConstant64 { destination, label } => Self::LoadConstant64 {
+                destination: map_definition(*destination),
+                label: *label,
+            },
+            Self::LoadStaticAddress { destination, label } => Self::LoadStaticAddress {
+                destination: map_definition(*destination),
+                label: *label,
+            },
+            Self::LoadMemory {
+                operation,
+                destination,
+                base,
+                offset,
+            } => Self::LoadMemory {
+                operation: *operation,
+                destination: map_definition(*destination),
+                base: map_use(*base),
+                offset: *offset,
+            },
+            Self::StoreMemory {
+                operation,
+                source,
+                base,
+                offset,
+            } => Self::StoreMemory {
+                operation: *operation,
+                source: map_use(*source),
+                base: map_use(*base),
+                offset: *offset,
+            },
+            Self::StoreSymbol { source, symbol } => Self::StoreSymbol {
+                source: map_use(*source),
+                symbol: *symbol,
+            },
+            Self::MoveToCop0 { source, register } => Self::MoveToCop0 {
+                source: map_use(*source),
+                register: *register,
             },
             Self::Move {
                 destination,
@@ -445,17 +930,126 @@ impl IrInstruction {
                 source: map_use(*source),
             },
             Self::ConditionalMove {
+                operation,
                 destination,
                 source,
                 condition,
             } => Self::ConditionalMove {
+                operation: *operation,
                 destination: map_definition(*destination),
                 source: map_use(*source),
                 condition: map_use(*condition),
             },
+            Self::IntegerArithmetic {
+                operation,
+                signed,
+                destination,
+                left,
+                right,
+            } => Self::IntegerArithmetic {
+                operation: *operation,
+                signed: *signed,
+                destination: map_definition(*destination),
+                left: map_use(*left),
+                right: map_use(*right),
+            },
+            Self::IntegerAddImmediate {
+                destination,
+                source,
+                value,
+            } => Self::IntegerAddImmediate {
+                destination: map_definition(*destination),
+                source: map_use(*source),
+                value: *value,
+            },
+            Self::FloatArithmetic {
+                operation,
+                destination,
+                left,
+                right,
+            } => Self::FloatArithmetic {
+                operation: *operation,
+                destination: map_definition(*destination),
+                left: map_use(*left),
+                right: map_use(*right),
+            },
+            Self::VariableShift {
+                operation,
+                destination,
+                value,
+                amount,
+            } => Self::VariableShift {
+                operation: *operation,
+                destination: map_definition(*destination),
+                value: map_use(*value),
+                amount: map_use(*amount),
+            },
+            Self::IntegerShiftImmediate {
+                operation,
+                destination,
+                value,
+                amount,
+            } => Self::IntegerShiftImmediate {
+                operation: *operation,
+                destination: map_definition(*destination),
+                value: map_use(*value),
+                amount: *amount,
+            },
+            Self::IntegerCompare {
+                comparison,
+                signed,
+                destination,
+                left,
+                right,
+            } => Self::IntegerCompare {
+                comparison: *comparison,
+                signed: *signed,
+                destination: map_definition(*destination),
+                left: map_use(*left),
+                right: map_use(*right),
+            },
+            Self::IntegerBitwise {
+                operation,
+                destination,
+                left,
+                right,
+            } => Self::IntegerBitwise {
+                operation: *operation,
+                destination: map_definition(*destination),
+                left: map_use(*left),
+                right: map_use(*right),
+            },
+            Self::IntegerBitwiseImmediate {
+                operation,
+                destination,
+                source,
+                value,
+            } => Self::IntegerBitwiseImmediate {
+                operation: *operation,
+                destination: map_definition(*destination),
+                source: map_use(*source),
+                value: *value,
+            },
+            Self::Gpr128Upper64 {
+                destination,
+                source,
+            } => Self::Gpr128Upper64 {
+                destination: map_definition(*destination),
+                source: map_use(*source),
+            },
+            Self::ExtractWord {
+                part,
+                destination,
+                source,
+            } => Self::ExtractWord {
+                part: *part,
+                destination: map_definition(*destination),
+                source: map_use(*source),
+            },
             Self::Call { argument_count } => Self::Call {
                 argument_count: *argument_count,
             },
+            Self::CallDelay => Self::CallDelay,
             Self::Return { value, register } => Self::Return {
                 value: map_use(*value),
                 register: *register,
@@ -471,6 +1065,18 @@ impl IrInstruction {
                     BranchCondition::NonZero(register) => {
                         BranchCondition::NonZero(map_use(*register))
                     }
+                    BranchCondition::Negative(register) => {
+                        BranchCondition::Negative(map_use(*register))
+                    }
+                    BranchCondition::NonNegative(register) => {
+                        BranchCondition::NonNegative(map_use(*register))
+                    }
+                    BranchCondition::Positive(register) => {
+                        BranchCondition::Positive(map_use(*register))
+                    }
+                    BranchCondition::NonPositive(register) => {
+                        BranchCondition::NonPositive(map_use(*register))
+                    }
                     BranchCondition::Equal(left, right) => {
                         BranchCondition::Equal(map_use(*left), map_use(*right))
                     }
@@ -481,6 +1087,7 @@ impl IrInstruction {
                 target: *target,
                 delay: *delay,
             },
+            Self::Align { bits } => Self::Align { bits: *bits },
             Self::Nop => Self::Nop,
         }
     }
@@ -615,6 +1222,7 @@ mod tests {
     fn conditional_move_reads_its_destination() {
         let destination = Register::Virtual(VirtualRegisterId(0));
         let effects = IrInstruction::ConditionalMove {
+            operation: ConditionalMoveOperation::NonZero,
             destination,
             source: Register::Virtual(VirtualRegisterId(1)),
             condition: Register::Virtual(VirtualRegisterId(2)),

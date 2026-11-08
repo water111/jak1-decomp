@@ -1,16 +1,30 @@
+#include "sce/iop/intrman/intrman.h"
 #include "sce/iop/libsd/hardware.h"
 #include "sce/iop/libsd/internal.h"
 
 void sd_init_bus(void) {
+#if LIBSD_VERSION >= 0x0301
+  int intr_state;
+#endif
   (*(volatile u_int*)IOP_SPU_BASE0_ADDRESS) = SPU2_BASE;
   (*(volatile u_int*)IOP_SPU_BASE1_ADDRESS) = SPU2_BASE + 0x800;
+#if LIBSD_VERSION >= 0x0301
+  CpuSuspendIntr(&intr_state);
+#endif
   (*(volatile u_int*)SPU2_DMA_PRIORITY_ADDRESS) |= 0x80000;
   (*(volatile u_int*)SPU2_DMA_PRIORITY1_ADDRESS) |= 8;
+#if LIBSD_VERSION >= 0x0301
+  CpuResumeIntr(intr_state);
+#endif
   (*(volatile u_int*)SPU2_DMA_DELAY_ADDRESS) = 0x200b31e1;
   (*(volatile u_int*)SPU2_DMA_DELAY1_ADDRESS) = 0x200b31e1;
 }
 
-void sd_init_spdif(int mode) {
+#if LIBSD_VERSION >= 0x0303
+static inline
+#endif
+    void
+    sd_init_spdif(int mode) {
   SPU2_REG(0, SPU2_SPDIF_MODE_OFFSET) = 0x900;
   SPU2_REG(0, SPU2_SPDIF_MEDIA_OFFSET) = 0x200;
   if (mode)
@@ -72,6 +86,7 @@ void sd_init_core_volume(int mode) {
   SPU2_REG(0, SPU2_BVOLR_OFFSET + 1 * SPU2_VOLUME_CORE_STRIDE) = 0;
 }
 
+#if LIBSD_VERSION < 0x0301
 void sd_init_core0(void) {
   SPU2_REG(0, SPU2_SPDIF_OUTPUT_OFFSET) = 0xc032;
   SPU2_REG(0, SPU2_VOICE_MIX_L_OFFSET) = 0xffff;
@@ -86,3 +101,5 @@ void sd_init_core0(void) {
   SPU2_REG(0, SPU2_EFFECT_END_OFFSET) = 3;
   sd_init_spdif(1);
 }
+
+#endif

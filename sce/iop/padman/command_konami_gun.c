@@ -1,10 +1,15 @@
 #include "sce/iop/padman/commands.h"
+#include "sce/iop/padman/padman.h"
 
 static void pad_konami_gun_read(u_char* buffer) {
   buffer[0] = 1;
   buffer[1] = 66;
   buffer[2] = 0;
+#if PADMAN_VERSION >= 0x0403
+  buffer[3] = 16;
+#else
   buffer[3] = 0;
+#endif
   buffer[4] = 0;
 }
 

@@ -51,6 +51,7 @@ pub(super) struct IopBuild {
     pub imports: &'static [&'static str],
     pub defines: &'static [&'static str],
     pub entry: &'static str,
+    pub compiler: &'static str,
     pub optimization: &'static str,
     pub strip: StripMode,
     pub assembler_debug: bool,
@@ -73,6 +74,7 @@ const DEFAULT_BUILD: IopBuild = IopBuild {
     imports: &[],
     defines: &[],
     entry: "start",
+    compiler: "$iop_tool_dir/cc1",
     optimization: "-O2",
     strip: StripMode::MinimalSymbols,
     assembler_debug: false,
@@ -241,6 +243,42 @@ pub(super) const MCSERV_2_12: IopBuild = IopBuild {
     ..DEFAULT_BUILD
 };
 
+pub(super) const MCSERV_2_15: IopBuild = IopBuild {
+    version: "2.15",
+    sha256: "1195d3cb96f46a13f0342dc14c7bc4f55240aad2bf85427f7f38a0bea57331e8",
+    defines: &["MCSERV_VERSION=0x020f"],
+    imports: &[
+        "sce/iop/loadcore/loadcore-1.3.tbl",
+        "sce/iop/intrman/intrman.tbl",
+        "sce/iop/sysclib/sysclib-1.3.tbl",
+        "sce/iop/stdio/stdio-1.3.tbl",
+        "sce/iop/sifman/sifman.tbl",
+        "sce/iop/sifcmd/sifcmd.tbl",
+        "sce/iop/thbase/thbase.tbl",
+        "sce/iop/thsemap/thsemap.tbl",
+        "sce/iop/mcman/mcman-2.6.tbl",
+    ],
+    ..MCSERV_2_12
+};
+
+pub(super) const MCSERV_2_16: IopBuild = IopBuild {
+    version: "2.16",
+    sha256: "42790c4999c9deb17bb0fe2ceb155d3b141adf059c3055e11039070be2a8a7a6",
+    defines: &["MCSERV_VERSION=0x0210"],
+    imports: &[
+        "sce/iop/loadcore/loadcore-1.3.tbl",
+        "sce/iop/intrman/intrman.tbl",
+        "sce/iop/sysclib/sysclib-1.3.tbl",
+        "sce/iop/stdio/stdio-1.3.tbl",
+        "sce/iop/sifman/sifman.tbl",
+        "sce/iop/sifcmd/sifcmd.tbl",
+        "sce/iop/thbase/thbase-1.2.tbl",
+        "sce/iop/thsemap/thsemap.tbl",
+        "sce/iop/mcman/mcman-2.7.tbl",
+    ],
+    ..MCSERV_2_12
+};
+
 pub(super) const IOPSETUP: IopBuild = IopBuild {
     output_dir: "sce/iop/iopsetup",
     filename: "IOPSETUP.IRX",
@@ -257,6 +295,149 @@ pub(super) const IOPSETUP: IopBuild = IopBuild {
     debug_import_source: Some("/tmp/ccR4mDML_ilb_stub.s"),
     optimization: "-O0",
     strip: StripMode::None,
+    ..DEFAULT_BUILD
+};
+
+pub(super) const IOPSETUP_20030405: IopBuild = IopBuild {
+    version: "20030405",
+    sha256: "5cb6cd1444dd3f0aa6f645320e6fa74fac58907da86bbd8b3eb99aae7aecfc41",
+    debug_import_source: Some("/tmp/ccXXQttB_ilb_stub.s"),
+    defines: &["IOPSETUP_REVISION=20030405"],
+    optimization: "-O2",
+    imports: &[
+        "sce/iop/usbd/usbd.tbl",
+        "sce/iop/stdio/stdio-1.3.tbl",
+        "sce/iop/sysclib/sysclib-1.3.tbl",
+        "sce/iop/thbase/thbase.tbl",
+    ],
+    ..IOPSETUP
+};
+
+pub(super) const IOPSETUP_20030713: IopBuild = IopBuild {
+    version: "20030713",
+    sha256: "40ce16f522a9167628eae0fa1acba72c9ee779e1aa3ba3fe3a38c3538b05a64b",
+    debug_import_source: Some("/tmp/ccWTkR5G_ilb_stub.s"),
+    defines: &["IOPSETUP_REVISION=20030713"],
+    optimization: "-O3",
+    imports: &[
+        "sce/iop/usbd/usbd.tbl",
+        "sce/iop/stdio/stdio-1.3.tbl",
+        "sce/iop/sysclib/sysclib-1.3.tbl",
+        "sce/iop/thbase/thbase-1.2.tbl",
+    ],
+    ..IOPSETUP_20030405
+};
+
+// The later Jak 2 binaries differ only in the temporary import filename in .mdebug.
+pub(super) const IOPSETUP_20030720: IopBuild = IopBuild {
+    version: "20030720",
+    sha256: "6bf65a87e6b7960afd28aa9e132791ccd9af46bb8045b2e169cc49784b19d8f4",
+    debug_import_source: Some("/tmp/ccwT7gF9_ilb_stub.s"),
+    ..IOPSETUP_20030713
+};
+
+pub(super) const IOPSETUP_20030818: IopBuild = IopBuild {
+    version: "20030818",
+    sha256: "66da696a7ce358923be5f3b7036bbe01e8d0d435c0a690bf7a85e92c2b1308a7",
+    debug_import_source: Some("/tmp/cc1gT13t_ilb_stub.s"),
+    ..IOPSETUP_20030713
+};
+
+pub(super) const IOPSETUP_20030826: IopBuild = IopBuild {
+    version: "20030826",
+    sha256: "468a7c4489043152da3e9fb0c8fcc8de443149bf454d6dd4452544b8c2779083",
+    debug_import_source: Some("/tmp/ccJL5BgU_ilb_stub.s"),
+    ..IOPSETUP_20030713
+};
+
+pub(super) const USBMOUSE_20030405: IopBuild = IopBuild {
+    version: "2.2 (20030405)",
+    sha256: "c51c3786b45c5dec88037165d9af51b63c804bf4f7643c0f0251a5e5b79ccabf",
+    debug_import_source: Some("/tmp/ccGsA6Of_ilb_stub.s"),
+    output_dir: "sce/iop/usbmouse",
+    filename: "USBMOUSE.IRX",
+    source_dir: "sce/iop/usbmouse",
+    sources: &["usbmouse.c"],
+    strip: StripMode::None,
+    optimization: "-O2",
+    imports: &[
+        "sce/iop/usbd/usbd.tbl",
+        "sce/iop/sysmem/sysmem.tbl",
+        "sce/iop/intrman/intrman.tbl",
+        "sce/iop/sifcmd/sifcmd.tbl",
+        "sce/iop/stdio/stdio-1.3.tbl",
+        "sce/iop/sysclib/sysclib-1.3.tbl",
+        "sce/iop/thbase/thbase.tbl",
+    ],
+    ..DEFAULT_BUILD
+};
+
+pub(super) const USBMOUSE_20030713: IopBuild = IopBuild {
+    version: "2.2 (20030713)",
+    sha256: "5ccc422d5dc305466414bcfa07c7acf0d679b70408b24636d552d4723fa55333",
+    debug_import_source: Some("/tmp/cc9IIAHp_ilb_stub.s"),
+    optimization: "-O3",
+    defines: &["USBMOUSE_ORDER_RPC_SYMBOLS"],
+    imports: &[
+        "sce/iop/usbd/usbd.tbl",
+        "sce/iop/sysmem/sysmem.tbl",
+        "sce/iop/intrman/intrman.tbl",
+        "sce/iop/sifcmd/sifcmd.tbl",
+        "sce/iop/stdio/stdio-1.3.tbl",
+        "sce/iop/sysclib/sysclib-1.3.tbl",
+        "sce/iop/thbase/thbase-1.2.tbl",
+    ],
+    ..USBMOUSE_20030405
+};
+
+// These later files differ only in the temporary import filename retained in .mdebug.
+pub(super) const USBMOUSE_20030720: IopBuild = IopBuild {
+    version: "2.2 (20030720)",
+    sha256: "52472730c48caaf05623238268617d6c75920d4095086c5f3bd67f62cc643748",
+    debug_import_source: Some("/tmp/ccbXNjLP_ilb_stub.s"),
+    ..USBMOUSE_20030713
+};
+
+pub(super) const USBMOUSE_20030818: IopBuild = IopBuild {
+    version: "2.2 (20030818)",
+    sha256: "cfa0e94e3334e738b2d7b07f716c6473331378090a7463d65c005ab1096d0ae6",
+    debug_import_source: Some("/tmp/ccOp7BOd_ilb_stub.s"),
+    ..USBMOUSE_20030713
+};
+
+pub(super) const USBMOUSE_20030826: IopBuild = IopBuild {
+    version: "2.2 (20030826)",
+    sha256: "729572ffc23a1421b89a4db7c87b7458c470d8435b78d05341cbdb5a205ba494",
+    debug_import_source: Some("/tmp/cch6BnLJ_ilb_stub.s"),
+    ..USBMOUSE_20030713
+};
+
+pub(super) const CDVDSTM_2_1: IopBuild = IopBuild {
+    output_dir: "sce/iop/cdvdstm",
+    filename: "CDVDSTM.IRX",
+    version: "2.1",
+    sha256: "39a38b90283da2fd2e6ab15339ff9a177fca31360f60a7c8182a6ebc69e2eee2",
+    source_dir: "sce/iop/cdvdstm",
+    sources: &["main.c", "ee.c", "copy.s"],
+    link_small_data: 8,
+    assembler_debug: true,
+    imports: &[
+        "sce/iop/sysmem/sysmem.tbl",
+        "sce/iop/loadcore/loadcore-1.3.tbl",
+        "sce/iop/intrman/intrman.tbl",
+        "sce/iop/stdio/stdio-1.3.tbl",
+        "sce/iop/thbase/thbase-1.2.tbl",
+        "sce/iop/thevent/thevent.tbl",
+        "sce/iop/thsemap/thsemap.tbl",
+        "sce/iop/sifman/sifman.tbl",
+        "sce/iop/ioman/ioman.tbl",
+        "sce/iop/cdvdman/cdvdman.tbl",
+    ],
+    exports: Some(ExportTable {
+        table: "cdvdstm.tbl",
+        object: "exports",
+        position: ExportPosition::Last,
+    }),
     ..DEFAULT_BUILD
 };
 
@@ -304,6 +485,78 @@ pub(super) const LIBSD_1_4: IopBuild = IopBuild {
     ..DEFAULT_BUILD
 };
 
+pub(super) const LIBSD_3_1: IopBuild = IopBuild {
+    version: "3.1",
+    sha256: "dd593d288fe2f801a991a5822382e3f756f5078b72a5008e85fbd6d37fd73300",
+    sources: &[
+        "state_v3.s",
+        "libsd.c",
+        "data.c",
+        "effect_registers.c",
+        "effect_clear.c",
+        "effect.c",
+        "init.c",
+        "voice_transfer.c",
+        "voice_status.c",
+        "block_transfer.c",
+        "transfers_v3.c",
+        "batch.c",
+        "registers.c",
+        "pitch.c",
+        "attributes.c",
+        "transfer_callbacks.c",
+        "irq_callbacks.c",
+        "init_v3.c",
+    ],
+    imports: &[
+        "sce/iop/intrman/intrman.tbl",
+        "sce/iop/loadcore/loadcore-1.3.tbl",
+        "sce/iop/sifman/sifman.tbl",
+        "sce/iop/sysclib/sysclib-1.3.tbl",
+        "sce/iop/thevent/thevent.tbl",
+    ],
+    defines: &["LIBSD_VERSION=0x0301"],
+    exports: Some(ExportTable {
+        table: "libsd-3.1.tbl",
+        object: "exports",
+        position: ExportPosition::First,
+    }),
+    ..LIBSD_1_4
+};
+
+pub(super) const LIBSD_3_3: IopBuild = IopBuild {
+    version: "3.3",
+    sha256: "57cbd80b7c2f966985e14ca18c03e849e3b3eb1216f06a6f4c1e6ca85084ea37",
+    sources: &[
+        "state_clear.s",
+        "state_v3.s",
+        "libsd.c",
+        "data.c",
+        "effect_registers.c",
+        "effect_clear.c",
+        "effect.c",
+        "init.c",
+        "voice_transfer.c",
+        "voice_status.c",
+        "block_transfer.c",
+        "transfers_v3.c",
+        "batch.c",
+        "registers.c",
+        "pitch.c",
+        "attributes.c",
+        "transfer_callbacks.c",
+        "irq_callbacks.c",
+        "init_v3.c",
+    ],
+    defines: &["LIBSD_VERSION=0x0303"],
+    exports: Some(ExportTable {
+        table: "libsd-1.5.tbl",
+        object: "exports",
+        position: ExportPosition::First,
+    }),
+    ..LIBSD_3_1
+};
+
 pub(super) const USBD_2_4: IopBuild = IopBuild {
     output_dir: "sce/iop/usbd",
     filename: "USBD.IRX",
@@ -336,6 +589,48 @@ pub(super) const USBD_2_4: IopBuild = IopBuild {
         position: ExportPosition::First,
     }),
     ..DEFAULT_BUILD
+};
+
+// The descriptor remains 2.4; use the embedded driver version to distinguish builds.
+pub(super) const USBD_1_0_0: IopBuild = IopBuild {
+    version: "2.4 (driver 1.0.0)",
+    sha256: "3d46f4b3e3ee7b9120f7bd0926b852792f205208e3b4eefc3d9fc4002223b472",
+    defines: &["USBD_DRIVER_VERSION=0x010000"],
+    sources: &["hub.c", "controller.c", "version.c", "api.c", "device.c"],
+    assembler_debug: true,
+    imports: &[
+        "sce/iop/sysmem/sysmem.tbl",
+        "sce/iop/loadcore/loadcore-1.3.tbl",
+        "sce/iop/intrman/intrman.tbl",
+        "sce/iop/stdio/stdio-1.3.tbl",
+        "sce/iop/thbase/thbase.tbl",
+        "sce/iop/thevent/thevent.tbl",
+        "sce/iop/thsemap/thsemap.tbl",
+        "sce/iop/sysclib/sysclib-1.3.tbl",
+    ],
+    exports: Some(ExportTable {
+        table: "usbd-1.0.0.tbl",
+        object: "exports",
+        position: ExportPosition::First,
+    }),
+    ..USBD_2_4
+};
+
+pub(super) const USBD_1_1_0: IopBuild = IopBuild {
+    version: "2.4 (driver 1.1.0)",
+    sha256: "f0e882517547bd689051950eb323f861b70eef8662ed2cac50533ae3cc93c564",
+    defines: &["USBD_DRIVER_VERSION=0x010100"],
+    imports: &[
+        "sce/iop/sysmem/sysmem.tbl",
+        "sce/iop/loadcore/loadcore-1.3.tbl",
+        "sce/iop/intrman/intrman.tbl",
+        "sce/iop/stdio/stdio-1.3.tbl",
+        "sce/iop/thbase/thbase-1.2.tbl",
+        "sce/iop/thevent/thevent.tbl",
+        "sce/iop/thsemap/thsemap.tbl",
+        "sce/iop/sysclib/sysclib-1.3.tbl",
+    ],
+    ..USBD_1_0_0
 };
 
 pub(super) const PADMAN_4_2: IopBuild = IopBuild {
@@ -384,6 +679,80 @@ pub(super) const PADMAN_4_2: IopBuild = IopBuild {
     ..DEFAULT_BUILD
 };
 
+pub(super) const PADMAN_4_3: IopBuild = IopBuild {
+    version: "4.3",
+    sha256: "8879a8ffb9d67a34c902c80e7d566eb964c02e23b1ee1f70900af065c217f5b2",
+    defines: &["PADMAN_VERSION=0x0403"],
+    sources: &[
+        "core.c",
+        "state_v43.s",
+        "transfer.c",
+        "commands.c",
+        "command_find.c",
+        "command_mouse.c",
+        "command_digital.c",
+        "command_analog.c",
+        "command_negicon.c",
+        "command_joystick.c",
+        "command_konami_gun.c",
+        "command_namco_gun.c",
+        "command_jogcon.c",
+        "command_config.c",
+        "rpc.c",
+    ],
+    imports: &[
+        "sce/iop/sysmem/sysmem.tbl",
+        "sce/iop/loadcore/loadcore-1.3.tbl",
+        "sce/iop/intrman/intrman.tbl",
+        "sce/iop/stdio/stdio-1.3.tbl",
+        "sce/iop/sio2man/sio2man-2.5.tbl",
+        "sce/iop/thbase/thbase.tbl",
+        "sce/iop/thevent/thevent.tbl",
+        "sce/iop/sifman/sifman.tbl",
+        "sce/iop/sifcmd/sifcmd.tbl",
+        "sce/iop/vblank/vblank.tbl",
+        "sce/iop/sysclib/sysclib-1.3.tbl",
+    ],
+    ..PADMAN_4_2
+};
+
+pub(super) const PADMAN_4_5: IopBuild = IopBuild {
+    version: "4.5",
+    sha256: "c11d3fffbca7f99f571299eddbbea3a77fa2d0614dbb22ee8f5a4f9a1c22d67f",
+    defines: &["PADMAN_VERSION=0x0405"],
+    sources: &[
+        "core.c",
+        "state_v45.s",
+        "transfer.c",
+        "commands.c",
+        "command_find.c",
+        "command_mouse.c",
+        "command_digital.c",
+        "command_analog.c",
+        "command_negicon.c",
+        "command_joystick.c",
+        "command_konami_gun.c",
+        "command_namco_gun.c",
+        "command_jogcon.c",
+        "command_config.c",
+        "rpc.c",
+    ],
+    imports: &[
+        "sce/iop/sysmem/sysmem.tbl",
+        "sce/iop/loadcore/loadcore-1.3.tbl",
+        "sce/iop/intrman/intrman.tbl",
+        "sce/iop/stdio/stdio-1.3.tbl",
+        "sce/iop/sio2man/sio2man-3.0.tbl",
+        "sce/iop/thbase/thbase-1.2.tbl",
+        "sce/iop/thevent/thevent.tbl",
+        "sce/iop/sifman/sifman.tbl",
+        "sce/iop/sifcmd/sifcmd.tbl",
+        "sce/iop/vblank/vblank.tbl",
+        "sce/iop/sysclib/sysclib-1.3.tbl",
+    ],
+    ..PADMAN_4_2
+};
+
 pub(super) const MCMAN_2_21: IopBuild = IopBuild {
     output_dir: "sce/iop/mcman",
     filename: "MCMAN.IRX",
@@ -397,6 +766,7 @@ pub(super) const MCMAN_2_21: IopBuild = IopBuild {
         "ps2.c",
         "ps1.c",
         "storage.c",
+        "backup.c",
         "driver.c",
         "state.s",
     ],
@@ -422,6 +792,79 @@ pub(super) const MCMAN_2_21: IopBuild = IopBuild {
     }),
 
     ..DEFAULT_BUILD
+};
+
+pub(super) const MCMAN_2_32: IopBuild = IopBuild {
+    version: "2.32",
+    sha256: "804ee51670407c3d71fe56155e76b4a40a1d8f9d3077e12890efcdf6826e542e",
+    defines: &["MCMAN_VERSION=0x0220"],
+    sources: &[
+        "core.c",
+        "protocol.c",
+        "geometry.c",
+        "ps2.c",
+        "ps1.c",
+        "storage.c",
+        "backup.c",
+        "driver.c",
+        "state_v32.s",
+    ],
+    imports: &[
+        "sce/iop/loadcore/loadcore-1.3.tbl",
+        "sce/iop/intrman/intrman.tbl",
+        "sce/iop/sio2man/sio2man-2.5.tbl",
+        "sce/iop/sysclib/sysclib-1.3.tbl",
+        "sce/iop/stdio/stdio-1.3.tbl",
+        "sce/iop/thbase/thbase.tbl",
+        "sce/iop/thsemap/thsemap.tbl",
+        "sce/iop/modload/modload-1.5.tbl",
+        "sce/iop/ioman/ioman.tbl",
+        "sce/iop/secrman/secrman.tbl",
+        "sce/iop/cdvdman/cdvdman.tbl",
+    ],
+    exports: Some(ExportTable {
+        table: "mcman-2.6.tbl",
+        object: "exports",
+        position: ExportPosition::First,
+    }),
+    ..MCMAN_2_21
+};
+
+pub(super) const MCMAN_2_34: IopBuild = IopBuild {
+    version: "2.34",
+    sha256: "cdb1dfd12cb71f60d4834eb888dbbffeb6f6382e3bdffc1a50122034f7969b6b",
+    defines: &["MCMAN_VERSION=0x0222"],
+    sources: &[
+        "core.c",
+        "protocol.c",
+        "geometry.c",
+        "ps2.c",
+        "ps1.c",
+        "storage.c",
+        "backup.c",
+        "driver.c",
+        "raw_protocol.c",
+        "state_v34.s",
+    ],
+    imports: &[
+        "sce/iop/loadcore/loadcore-1.3.tbl",
+        "sce/iop/intrman/intrman.tbl",
+        "sce/iop/sio2man/sio2man-3.0.tbl",
+        "sce/iop/sysclib/sysclib-1.3.tbl",
+        "sce/iop/stdio/stdio-1.3.tbl",
+        "sce/iop/thbase/thbase-1.2.tbl",
+        "sce/iop/thsemap/thsemap.tbl",
+        "sce/iop/modload/modload-1.6.tbl",
+        "sce/iop/ioman/ioman.tbl",
+        "sce/iop/secrman/secrman.tbl",
+        "sce/iop/cdvdman/cdvdman.tbl",
+    ],
+    exports: Some(ExportTable {
+        table: "mcman-2.7.tbl",
+        object: "exports",
+        position: ExportPosition::First,
+    }),
+    ..MCMAN_2_21
 };
 
 pub(super) const SND989_2_6_8: IopBuild = IopBuild {
@@ -512,6 +955,162 @@ pub(super) const SND989_2_6_4: IopBuild = IopBuild {
         position: ExportPosition::Before("exports.o"),
     }),
     ..SND989_2_6_8
+};
+
+pub(super) const SND989_3_0_0: IopBuild = IopBuild {
+    version: "3.0.0",
+    sha256: "558cb177c4d5de8b53a42b1cd1180047fa2fc81f5f1b299c8f823e70e6dd216a",
+    defines: &["SND989_VERSION=0x030000"],
+    compiler: "$repo_root/toolchain/bin/iop-2.95.3/cc1",
+    optimization: "-O2 -mgas -msplit-addresses",
+    ..SND989_2_6_8
+};
+
+pub(super) const OVERLORD_JAK2_20030826: IopBuild = IopBuild {
+    output_dir: "overlord",
+    filename: "OVERLORD.IRX",
+    version: "2003-08-26",
+    sha256: "ce42292f33798369c263361b63ce0f16c8cd72b1bf4baff8473c8d10addc61bf",
+    source_dir: "jak2/overlord",
+    defines: &["OVERLORD_REVISION=20030826"],
+    sources: &[
+        "overlord.c",
+        "iso_cd.c",
+        "ramdisk.c",
+        "fakeiso.c",
+        "deviso.c",
+        "isocommon.c",
+        "isodesc.c",
+        "dma.c",
+        "iso.c",
+        "iso_queue.c",
+        "stream.c",
+        "srpc.c",
+        "vag.c",
+        "sbank.c",
+        "ssound.c",
+        "soundcommon.c",
+        "iso_api.c",
+        "minilzo.c",
+        "plugin.c",
+        "streamlfo.c",
+        "streamlist.c",
+        "spustreams.c",
+        "pages.c",
+        "list.c",
+    ],
+    imports: &[
+        "sce/iop/cdvdman/cdvdman.tbl",
+        "sce/iop/libsd/libsd-1.5.tbl",
+        "sce/iop/scrtchpd/scrtchpd.tbl",
+        "sce/iop/989snd/snd989-jak2.tbl",
+        "sce/iop/sysmem/sysmem.tbl",
+        "sce/iop/intrman/intrman.tbl",
+        "sce/iop/loadcore/loadcore-1.3.tbl",
+        "sce/iop/sifcmd/sifcmd.tbl",
+        "sce/iop/sifman/sifman.tbl",
+        "sce/iop/stdio/stdio-1.3.tbl",
+        "sce/iop/sysclib/sysclib-1.3.tbl",
+        "sce/iop/thbase/thbase-1.2.tbl",
+        "sce/iop/thsemap/thsemap.tbl",
+        "sce/iop/thmsgbx/thmsgbx.tbl",
+        "sce/iop/vblank/vblank.tbl",
+    ],
+    input_names: &[
+        (
+            "isocommon.c",
+            "/usr/home/agavin/src/jak2/libs/common/isocommon.c",
+        ),
+        (
+            "isodesc.c",
+            "/usr/home/agavin/src/jak2/libs/common/isodesc.c",
+        ),
+        (
+            "soundcommon.c",
+            "/usr/home/agavin/src/jak2/libs/common/soundcommon.c",
+        ),
+        (
+            "minilzo.c",
+            "/usr/home/agavin/src/jak2/libs/common/minilzo.c",
+        ),
+    ],
+    debug_import_source: Some("/tmp/ccgggVxU_ilb_stub.s"),
+    strip: StripMode::None,
+    link_small_data: 8,
+    ..DEFAULT_BUILD
+};
+
+pub(super) const OVERLORD_JAK2_20030405: IopBuild = IopBuild {
+    version: "2003-04-05",
+    sha256: "4f1ec1726e0b6678ecc1f04efb59bf01248c712ffc79a1db2662c75e6f15397c",
+    sources: &[
+        "overlord.c",
+        "iso_cd.c",
+        "ramdisk.c",
+        "fakeiso.c",
+        "deviso.c",
+        "isocommon.c",
+        "isodesc.c",
+        "dma.c",
+        "iso.c",
+        "iso_queue.c",
+        "stream.c",
+        "srpc.c",
+        "vag.c",
+        "sbank.c",
+        "ssound.c",
+        "soundcommon.c",
+        "iso_api.c",
+        "minilzo.c",
+        "plugin.c",
+        "streamlfo.c",
+        "streamlist.c",
+        "spustreams.c",
+    ],
+    imports: &[
+        "sce/iop/cdvdman/cdvdman.tbl",
+        "sce/iop/libsd/libsd-1.5.tbl",
+        "sce/iop/scrtchpd/scrtchpd.tbl",
+        "sce/iop/989snd/snd989-jak2.tbl",
+        "sce/iop/sysmem/sysmem.tbl",
+        "sce/iop/intrman/intrman.tbl",
+        "sce/iop/loadcore/loadcore-1.3.tbl",
+        "sce/iop/sifcmd/sifcmd.tbl",
+        "sce/iop/sifman/sifman.tbl",
+        "sce/iop/stdio/stdio-1.3.tbl",
+        "sce/iop/sysclib/sysclib-1.3.tbl",
+        "sce/iop/thbase/thbase.tbl",
+        "sce/iop/thsemap/thsemap.tbl",
+        "sce/iop/thmsgbx/thmsgbx.tbl",
+        "sce/iop/vblank/vblank.tbl",
+    ],
+    defines: &["OVERLORD_REVISION=20030405"],
+    debug_import_source: Some("/tmp/cc5yyieP_ilb_stub.s"),
+    ..OVERLORD_JAK2_20030826
+};
+
+pub(super) const OVERLORD_JAK2_20030713: IopBuild = IopBuild {
+    version: "2003-07-13",
+    sha256: "356c377b6df3e59581c73a7034e0c9f266ab8c2f34edbd9818d7f257e7a62456",
+    defines: &["OVERLORD_REVISION=20030713"],
+    debug_import_source: Some("/tmp/ccnxKPTh_ilb_stub.s"),
+    ..OVERLORD_JAK2_20030826
+};
+
+pub(super) const OVERLORD_JAK2_20030720: IopBuild = IopBuild {
+    version: "2003-07-20",
+    sha256: "6d537fda8d1abeabe120b076240a42f3479a9cf55569cfb4ceb18c2d0d69d016",
+    defines: &["OVERLORD_REVISION=20030720"],
+    debug_import_source: Some("/tmp/ccjDJN3f_ilb_stub.s"),
+    ..OVERLORD_JAK2_20030826
+};
+
+pub(super) const OVERLORD_JAK2_20030818: IopBuild = IopBuild {
+    version: "2003-08-18",
+    defines: &["OVERLORD_REVISION=20030818"],
+    sha256: "e98d91c2a9829814269b3a8d4ba3fd451be0c00a231f7dc7dc61c2815e7eb14e",
+    debug_import_source: Some("/tmp/cc7yc0Ov_ilb_stub.s"),
+    ..OVERLORD_JAK2_20030826
 };
 
 const OVERLORD_SOURCES: &[&str] = &[
@@ -716,12 +1315,12 @@ rule iop_host_tools
 build $iop_host_target/release/ioplibgen $iop_host_target/release/ioplibld $iop_host_target/release/iopfixup: iop_host_tools $repo_root/Cargo.toml $repo_root/Cargo.lock $repo_root/ioplibgen/Cargo.toml $repo_root/ioplibgen/src/main.rs $repo_root/ioplibld/Cargo.toml $repo_root/ioplibld/src/main.rs $repo_root/iopfixup/Cargo.toml $repo_root/iopfixup/src/main.rs
 
 rule iop_preprocess
-  command = cd "$build_dir/$source_workdir" && : > "$build_dir/$out.d" && SUNPRO_DEPENDENCIES="$build_dir/$out.d $out" "$iop_tool_dir/cpp" -nostdinc $defines $include_dirs "$source_name" "$build_dir/$out"
+  command = cd "$build_dir/$source_workdir" && : > "$build_dir/$out.d" && SUNPRO_DEPENDENCIES="$build_dir/$out.d $out" $source_name_command "$iop_tool_dir/cpp" -nostdinc $defines $include_dirs "$source_name" "$build_dir/$out"
   depfile = $out.d
   deps = gcc
   description = IOP CPP $out
 rule iop_compile
-  command = "$iop_tool_dir/cc1" -quiet $optimization -G $small_data -Werror-implicit-function-declaration "$in" -o "$out"
+  command = "$compiler" -quiet $optimization -G $small_data -Werror-implicit-function-declaration "$in" -o "$out"
   description = IOP CC $out
 rule iop_assemble
   command = "$iop_tool_dir/iop-as" $assembler_debug -G 0 -o "$out" "$in"
@@ -810,6 +1409,23 @@ fn append_module(
             .find(|(name, _)| name == source)
             .map(|(_, alias)| *alias)
             .unwrap_or(source);
+        // Absolute build-machine paths belong in debug metadata, not on the host
+        // filesystem. Rewrite only preprocessor line markers for these sources.
+        let (source_name, source_name_command, preprocess_tools) =
+            if Path::new(source_name).is_absolute() {
+                let local_name = Path::new(source).file_name().unwrap().to_str().unwrap();
+                let configure = std::env::current_exe()?;
+                (
+                    local_name,
+                    format!(
+                        "\"{}\" --iop-source-name \"{local_name}\" \"{source_name}\"",
+                        configure.display()
+                    ),
+                    format!("$iop_tool_dir/cpp {}", configure.display()),
+                )
+            } else {
+                (source_name, String::new(), "$iop_tool_dir/cpp".into())
+            };
         let link = source_workdir_path.join(source_name);
         let target = source_dir.join(source);
         fs::create_dir_all(link.parent().unwrap())?;
@@ -830,9 +1446,10 @@ fn append_module(
                     &format!("{object}.i"),
                     "preprocess",
                     &input,
-                    "$iop_tool_dir/cpp",
+                    &preprocess_tools,
                     &[
                         ("source_name", source_name.into()),
+                        ("source_name_command", source_name_command),
                         ("source_workdir", source_workdir.clone()),
                         ("defines", defines.clone()),
                         ("include_dirs", include_dirs.clone()),
@@ -843,8 +1460,9 @@ fn append_module(
                     &format!("{object}.s"),
                     "compile",
                     &format!("{object}.i"),
-                    "$iop_tool_dir/cc1",
+                    build.compiler,
                     &[
+                        ("compiler", build.compiler.into()),
                         ("optimization", build.optimization.into()),
                         (
                             "small_data",
@@ -962,4 +1580,33 @@ fn append_module(
         ],
     );
     Ok(())
+}
+
+// Invoke cpp normally, then preserve the original absolute source name in its
+// line markers. This affects compiler metadata only; source text is untouched.
+pub(super) fn preprocess_named_source(args: Vec<String>) -> io::Result<()> {
+    if args.len() < 4 {
+        return Err(io::Error::other(
+            "Expected source name, debug name, and cpp command",
+        ));
+    }
+    let status = std::process::Command::new(&args[2])
+        .args(&args[3..])
+        .status()?;
+    if !status.success() {
+        return Err(io::Error::other(format!("cpp {status}")));
+    }
+    let output = args.last().unwrap();
+    let text = fs::read_to_string(output)?;
+    let old = format!("\"{}\"", args[0]);
+    let new = format!("\"{}\"", args[1]);
+    let mut mapped = String::with_capacity(text.len());
+    for line in text.split_inclusive('\n') {
+        if line.starts_with("# ") {
+            mapped.push_str(&line.replace(&old, &new));
+        } else {
+            mapped.push_str(line);
+        }
+    }
+    fs::write(output, mapped)
 }

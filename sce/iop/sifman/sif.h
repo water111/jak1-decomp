@@ -15,4 +15,5 @@ extern void sceSifInit(void);
 extern int sceSifCheckInit(void);
 void sceSifInitRpc(unsigned int mode);
 
+unsigned int sceSifSetDmaIntr(sceSifDmaData* data, int count, void (*handler)(void*), void* arg);
 #endif

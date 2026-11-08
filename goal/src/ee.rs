@@ -1,4 +1,4 @@
-use crate::ir::Gpr;
+use crate::ir::{Cop0Register, Gpr};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum OperandFormat {
@@ -42,12 +42,52 @@ pub struct Opcode {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[repr(u32)]
 pub enum RegisterOpcode {
+    Sllv = 0x04,
     Jr = 0x08,
     Jalr = 0x09,
     Movn = 0x0b,
+    Movz = 0x0a,
+    Mfhi = 0x10,
+    Mflo = 0x12,
+    Dsllv = 0x14,
+    Dsrlv = 0x16,
+    Dsrav = 0x17,
+    Mult = 0x18,
+    Multu = 0x19,
+    Div = 0x1a,
+    Divu = 0x1b,
+    And = 0x24,
     Or = 0x25,
+    Xor = 0x26,
+    Nor = 0x27,
     Daddu = 0x2d,
+    Dsubu = 0x2f,
+    Slt = 0x2a,
+    Sltu = 0x2b,
     Por = 0x7000_04a9,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[repr(u32)]
+pub enum ImmediateShiftOpcode {
+    Sll = 0x00,
+    Srl = 0x02,
+    Sra = 0x03,
+    Dsll = 0x38,
+    Dsrl = 0x3a,
+    Dsra = 0x3b,
+    Dsll32 = 0x3c,
+    Dsrl32 = 0x3e,
+    Dsra32 = 0x3f,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[repr(u32)]
+pub enum RegimmOpcode {
+    Bltz = 0,
+    Bgez = 1,
+    Bltzl = 2,
+    Bgezl = 3,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -55,20 +95,42 @@ pub enum RegisterOpcode {
 pub enum ImmediateOpcode {
     Beq = 4,
     Bne = 5,
+    Blez = 6,
+    Bgtz = 7,
     Addiu = 9,
+    Andi = 12,
     Ori = 13,
+    Xori = 14,
     Lui = 15,
     Beql = 20,
     Bnel = 21,
+    Blezl = 22,
+    Bgtzl = 23,
     Daddiu = 25,
     Lq = 30,
     Sq = 31,
+    Lb = 32,
+    Lh = 33,
     Lw = 35,
+    Lbu = 36,
+    Lhu = 37,
+    Lwu = 39,
+    Sb = 40,
+    Sh = 41,
     Sw = 43,
     Lwc1 = 49,
     Ld = 55,
     Swc1 = 57,
     Sd = 63,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[repr(u32)]
+pub enum FloatOpcode {
+    Add = 0,
+    Subtract = 1,
+    Multiply = 2,
+    Divide = 3,
 }
 
 pub const fn encode_register(
@@ -78,6 +140,38 @@ pub const fn encode_register(
     right: Gpr,
 ) -> u32 {
     opcode as u32 | ((left as u32) << 21) | ((right as u32) << 16) | ((destination as u32) << 11)
+}
+
+pub const fn encode_variable_shift(
+    opcode: RegisterOpcode,
+    destination: Gpr,
+    value: Gpr,
+    amount: Gpr,
+) -> u32 {
+    debug_assert!(matches!(
+        opcode,
+        RegisterOpcode::Dsllv | RegisterOpcode::Dsrlv | RegisterOpcode::Dsrav
+    ));
+    encode_register(opcode, destination, amount, value)
+}
+
+pub const fn encode_immediate_shift(
+    opcode: ImmediateShiftOpcode,
+    destination: Gpr,
+    value: Gpr,
+    amount: u8,
+) -> u32 {
+    debug_assert!(amount < 32);
+    opcode as u32 | ((value as u32) << 16) | ((destination as u32) << 11) | ((amount as u32) << 6)
+}
+
+pub const fn encode_pcpyud(destination: Gpr, left: Gpr, right: Gpr) -> u32 {
+    (0x1c << 26)
+        | ((left as u32) << 21)
+        | ((right as u32) << 16)
+        | ((destination as u32) << 11)
+        | (0x0e << 6)
+        | 0x29
 }
 
 pub const fn encode_immediate(
@@ -90,9 +184,44 @@ pub const fn encode_immediate(
     ((opcode as u32) << 26) | ((base as u32) << 21) | ((register as u32) << 16) | immediate as u32
 }
 
+pub const fn encode_move_to_cop0(source: Gpr, register: Cop0Register) -> u32 {
+    0x4080_0000
+        | ((source as u32) << 16)
+        | ((register.number() as u32) << 11)
+        | register.select() as u32
+}
+
+pub const fn encode_regimm(opcode: RegimmOpcode, source: Gpr, immediate: u16) -> u32 {
+    (1 << 26) | ((source as u32) << 21) | ((opcode as u32) << 16) | immediate as u32
+}
+
 pub const fn encode_float_move(destination: u8, source: u8) -> u32 {
     debug_assert!(destination < 32 && source < 32);
     0x4600_0006 | ((source as u32) << 11) | ((destination as u32) << 6)
+}
+
+pub const fn encode_float_arithmetic(
+    opcode: FloatOpcode,
+    destination: u8,
+    left: u8,
+    right: u8,
+) -> u32 {
+    debug_assert!(destination < 32 && left < 32 && right < 32);
+    0x4600_0000
+        | ((right as u32) << 16)
+        | ((left as u32) << 11)
+        | ((destination as u32) << 6)
+        | opcode as u32
+}
+
+pub const fn encode_mtc1(destination: u8, source: Gpr) -> u32 {
+    debug_assert!(destination < 32);
+    0x4480_0000 | ((source as u32) << 16) | ((destination as u32) << 11)
+}
+
+pub const fn encode_mfc1(destination: Gpr, source: u8) -> u32 {
+    debug_assert!(source < 32);
+    0x4400_0000 | ((destination as u32) << 16) | ((source as u32) << 11)
 }
 
 pub const fn has_immediate_opcode(word: u32, opcode: ImmediateOpcode) -> bool {
@@ -314,37 +443,37 @@ pub static OPCODES: &[Opcode] = &[
     special("sllv", 0x04, OperandFormat::RdRtRs),
     special("srlv", 0x06, OperandFormat::RdRtRs),
     special("srav", 0x07, OperandFormat::RdRtRs),
-    special("movz", 0x0a, OperandFormat::RdRsRt),
+    special("movz", RegisterOpcode::Movz as u32, OperandFormat::RdRsRt),
     special("movn", RegisterOpcode::Movn as u32, OperandFormat::RdRsRt),
-    special("mfhi", 0x10, OperandFormat::Rd),
-    special("mflo", 0x12, OperandFormat::Rd),
-    special("dsllv", 0x14, OperandFormat::RdRtRs),
-    special("dsrlv", 0x16, OperandFormat::RdRtRs),
-    special("dsrav", 0x17, OperandFormat::RdRtRs),
-    special("mult", 0x18, OperandFormat::RsRt),
-    special("multu", 0x19, OperandFormat::RsRt),
-    special("div", 0x1a, OperandFormat::RsRt),
-    special("divu", 0x1b, OperandFormat::RsRt),
+    special("mfhi", RegisterOpcode::Mfhi as u32, OperandFormat::Rd),
+    special("mflo", RegisterOpcode::Mflo as u32, OperandFormat::Rd),
+    special("dsllv", RegisterOpcode::Dsllv as u32, OperandFormat::RdRtRs),
+    special("dsrlv", RegisterOpcode::Dsrlv as u32, OperandFormat::RdRtRs),
+    special("dsrav", RegisterOpcode::Dsrav as u32, OperandFormat::RdRtRs),
+    special("mult", RegisterOpcode::Mult as u32, OperandFormat::RsRt),
+    special("multu", RegisterOpcode::Multu as u32, OperandFormat::RsRt),
+    special("div", RegisterOpcode::Div as u32, OperandFormat::RsRt),
+    special("divu", RegisterOpcode::Divu as u32, OperandFormat::RsRt),
     special("addu", 0x21, OperandFormat::RdRsRt),
     special("subu", 0x23, OperandFormat::RdRsRt),
-    special("and", 0x24, OperandFormat::RdRsRt),
+    special("and", RegisterOpcode::And as u32, OperandFormat::RdRsRt),
     special("or", RegisterOpcode::Or as u32, OperandFormat::RdRsRt),
-    special("xor", 0x26, OperandFormat::RdRsRt),
-    special("nor", 0x27, OperandFormat::RdRsRt),
-    special("slt", 0x2a, OperandFormat::RdRsRt),
-    special("sltu", 0x2b, OperandFormat::RdRsRt),
+    special("xor", RegisterOpcode::Xor as u32, OperandFormat::RdRsRt),
+    special("nor", RegisterOpcode::Nor as u32, OperandFormat::RdRsRt),
+    special("slt", RegisterOpcode::Slt as u32, OperandFormat::RdRsRt),
+    special("sltu", RegisterOpcode::Sltu as u32, OperandFormat::RdRsRt),
     special("daddu", RegisterOpcode::Daddu as u32, OperandFormat::RdRsRt),
-    special("dsubu", 0x2f, OperandFormat::RdRsRt),
+    special("dsubu", RegisterOpcode::Dsubu as u32, OperandFormat::RdRsRt),
     special("dsll", 0x38, OperandFormat::RdRtShift),
     special("dsrl", 0x3a, OperandFormat::RdRtShift),
     special("dsra", 0x3b, OperandFormat::RdRtShift),
     special("dsll32", 0x3c, OperandFormat::RdRtShift),
     special("dsrl32", 0x3e, OperandFormat::RdRtShift),
     special("dsra32", 0x3f, OperandFormat::RdRtShift),
-    regimm("bltz", 0),
-    regimm("bgez", 1),
-    regimm("bltzl", 2),
-    regimm("bgezl", 3),
+    regimm("bltz", RegimmOpcode::Bltz as u32),
+    regimm("bgez", RegimmOpcode::Bgez as u32),
+    regimm("bltzl", RegimmOpcode::Bltzl as u32),
+    regimm("bgezl", RegimmOpcode::Bgezl as u32),
     regimm("bgezal", 17),
     branch(
         "beq",
@@ -479,10 +608,25 @@ pub static OPCODES: &[Opcode] = &[
         operands: OperandFormat::Branch,
         delay_slot: true,
     },
-    cop1("add.s", 16, 0, OperandFormat::FdFsFt),
-    cop1("sub.s", 16, 1, OperandFormat::FdFsFt),
-    cop1("mul.s", 16, 2, OperandFormat::FdFsFt),
-    cop1("div.s", 16, 3, OperandFormat::FdFsFt),
+    cop1("add.s", 16, FloatOpcode::Add as u32, OperandFormat::FdFsFt),
+    cop1(
+        "sub.s",
+        16,
+        FloatOpcode::Subtract as u32,
+        OperandFormat::FdFsFt,
+    ),
+    cop1(
+        "mul.s",
+        16,
+        FloatOpcode::Multiply as u32,
+        OperandFormat::FdFsFt,
+    ),
+    cop1(
+        "div.s",
+        16,
+        FloatOpcode::Divide as u32,
+        OperandFormat::FdFsFt,
+    ),
     cop1("sqrt.s", 16, 4, OperandFormat::FdFt),
     cop1("abs.s", 16, 5, OperandFormat::FdFs),
     Opcode {

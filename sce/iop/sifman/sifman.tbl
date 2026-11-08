@@ -32,3 +32,6 @@ Entry -	# 026
 Entry -	# 027
 Entry -	# 028
 Entry sceSifCheckInit	# 029
+Entry - # 030
+Entry - # 031
+Entry sceSifSetDmaIntr # 032

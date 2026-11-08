@@ -63,6 +63,8 @@ void sceSifRegisterRpc(sceSifServeData*,
                        void*,
                        sceSifQueueData*);
 void sceSifRpcLoop(sceSifQueueData*);
+sceSifServeData* sceSifRemoveRpc(sceSifServeData* server, sceSifQueueData* queue);
+sceSifQueueData* sceSifRemoveRpcQueue(sceSifQueueData* queue);
 
 typedef struct {
   sceSifRpcData rpcd;

@@ -10,12 +10,23 @@
 #include "sce/iop/thsemap/thsemap.h"
 #include "sce/iop/types.h"
 
+#if MCMAN_VERSION < 0x0220
 static u_char mcman_ps1_commands[][2] = {{0x53, 10}, {0x52, 140}, {0x57, 138}, {0x58, 5}};
+#endif
 
 extern struct Sio2Transfer mcman_ps1_packet;
 extern u_char mcman_ps1_tx[144], mcman_ps1_rx[144];
 extern int mcman_ps1_semaphore;
 extern struct SysClock mcman_ps1_delay;
+
+#if MCMAN_VERSION >= 0x0220
+void mcman_begin_ps1_transfer(int port, int slot) {
+  mcman_begin_transfer(port, slot);
+  DelayThread(300);
+}
+#else
+#define mcman_begin_ps1_transfer mcman_begin_transfer
+#endif
 
 void mcman_initPS1PDAcom(void) {
   int port;
@@ -52,6 +63,13 @@ void mcman_initPS1PDAcom(void) {
   mcman_ps1_semaphore = CreateSema(&semaphore);
 }
 
+#if MCMAN_VERSION >= 0x0220
+int mcman_shutdownPS1com(void) {
+  int result = DeleteSema(mcman_ps1_semaphore);
+  return result == 0 || result == -408;
+}
+#endif
+
 unsigned int mcman_ps1_alarm(void* argument) {
   iSignalSema(mcman_ps1_semaphore);
   return 0;
@@ -79,7 +97,7 @@ int McWritePS1PDACard(int port, int slot, int page, const void* buffer) {
   mcman_ps1_tx[134] = mcman_calcEDC(mcman_ps1_tx + 4, 130);
   for (i = 0; i < 5; i++) {
     WaitSema(mcman_ps1_semaphore);
-    mcman_begin_transfer(port, slot);
+    mcman_begin_ps1_transfer(port, slot);
     sio2_transfer_legacy(&mcman_ps1_packet);
     mcman_end_transfer();
     USec2SysClock(20000, &mcman_ps1_delay);
@@ -114,7 +132,7 @@ int McReadPS1PDACard(int port, int slot, int page, void* buffer) {
   mcman_ps1_tx[5] = page;
   for (i = 0; i < 5; i++) {
     WaitSema(mcman_ps1_semaphore);
-    mcman_begin_transfer(port, slot);
+    mcman_begin_ps1_transfer(port, slot);
     sio2_transfer_legacy(&mcman_ps1_packet);
     mcman_end_transfer();
     USec2SysClock(10000, &mcman_ps1_delay);
@@ -147,7 +165,7 @@ int mcman_probePS1Card2(int port, int slot) {
   mcman_ps1_tx[1] = 0x52;
   for (retries = 0; retries < 5; retries++) {
     WaitSema(mcman_ps1_semaphore);
-    mcman_begin_transfer(port, slot);
+    mcman_begin_ps1_transfer(port, slot);
     sio2_transfer_legacy(&mcman_ps1_packet);
     mcman_end_transfer();
     USec2SysClock(100, &mcman_ps1_delay);
@@ -181,7 +199,7 @@ int mcman_probePS1Card(int port, int slot) {
   mcman_ps1_tx[1] = 0x52;
   for (i = 0; i < 5; i++) {
     WaitSema(mcman_ps1_semaphore);
-    mcman_begin_transfer(port, slot);
+    mcman_begin_ps1_transfer(port, slot);
     sio2_transfer_legacy(&mcman_ps1_packet);
     mcman_end_transfer();
     USec2SysClock(100, &mcman_ps1_delay);
@@ -224,7 +242,7 @@ int mcman_probePDACard(int port, int slot) {
   mcman_ps1_tx[0] = 0x81;
   mcman_ps1_tx[1] = 0x58;
   for (retries = 0; retries < 5; retries++) {
-    mcman_begin_transfer(port, slot);
+    mcman_begin_ps1_transfer(port, slot);
     sio2_transfer_legacy(&mcman_ps1_packet);
     mcman_end_transfer();
     if ((mcman_ps1_packet.recv1 & 0xf000) == 0x1000)
@@ -319,6 +337,9 @@ int mcman_format1(int port, int slot) {
   if (result != 0)
     return -44;
   device->formatted = 1;
+#if MCMAN_VERSION >= 0x0220
+  device->free_clusters = -1;
+#endif
   return 0;
 }
 
@@ -687,6 +708,12 @@ int mcman_getdir1(int port,
       continue;
     if (!mcman_checkdirpath(entry->name, mcman_ps1_directory_name))
       continue;
+#if MCMAN_VERSION >= 0x0220
+    if (count < 0) {
+      done++;
+      continue;
+    }
+#endif
     memset(&output[done], 0, sizeof(struct McDirectoryEntry));
     output[done].attributes = 0x9417;
     if (entry->unknown5 != 0)

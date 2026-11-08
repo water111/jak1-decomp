@@ -9,3 +9,4 @@ Entry -	# 003
 Entry -	# 004
 Entry FlushDcache	# 005
 Entry RegisterLibraryEntries	# 006
+Entry ReleaseLibraryEntries # 007

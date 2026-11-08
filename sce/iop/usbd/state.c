@@ -1,7 +1,13 @@
 #include "sce/iop/loadcore/loadcore.h"
 #include "sce/iop/usbd/internal.h"
 
+#if USBD_DRIVER_VERSION >= 0x010100
+char usb_build_id[16] = "PsIIusbd    2700";
+#elif USBD_DRIVER_VERSION >= 0x010000
+char usb_build_id[16] = "PsIIusbd    2430";
+#else
 char usb_build_id[16] = "PsIIusbd    2200";
+#endif
 struct ModuleInfo Module = {"USB_driver", 0x0204};
 struct UsbRuntime usb_runtime = {-1, -1, -1, -1, -1};
 struct UsbCallbackQueue usb_callback_queue = {0, 0};
@@ -15,8 +21,15 @@ struct UsbOption usb_options[] = {
     {"hub=", &usb_configuration.hubs, 0},
     {"port=", &usb_configuration.ports, 0},
     {"thpri=", &usb_configuration.thread_priorities[0], &usb_configuration.thread_priorities[1]},
+#if USBD_DRIVER_VERSION >= 0x010000
+    {"reportd=", &usb_configuration.read_report_descriptors, 0},
+#endif
     {0, 0, 0}};
 struct UsbConfiguration usb_configuration
-    __attribute__((aligned(16))) = {32, 64, 128, 128, 256, 512, 8, 8, 0, {30, 36}, 0};
+    __attribute__((aligned(16))) = {32, 64, 128, 128, 256, 512, 8, 8, 0, {30, 36},
+#if USBD_DRIVER_VERSION >= 0x010000
+                                    0,
+#endif
+                                    0};
 struct UsbDriverList usb_drivers = {0, 0};
 struct UsbAutoloader usb_autoloader_state = {0};

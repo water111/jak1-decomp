@@ -19,21 +19,32 @@
 #include "sce/iop/thevent/thevent.h"
 #include "sce/iop/types.h"
 
+#if PADMAN_VERSION >= 0x0405
+char pad_build_id[16] = "PsIIpadman  2710";
+#elif PADMAN_VERSION >= 0x0403
+char pad_build_id[16] = "PsIIpadman  2410";
+#else
 char pad_build_id[16] = "PsIIpadman  2200";
-struct ModuleInfo Module = {"padman", 0x0402};
+#endif
+struct ModuleInfo Module = {"padman", PADMAN_VERSION};
 int pad_debug = 1;
+#if PADMAN_VERSION < 0x0403
 volatile int pad_vblank_flag = 0;
+#endif
 int pad_frame = 0;
 u_int pad_dma_id = 0;
 u_int pad_vblank_timeout = 0;
 int pad_poll_frame = 0;
 
+#if PADMAN_VERSION < 0x0403
 extern volatile int pad_vblank_flag;
 
 int pad_vblank_end(void) {
   pad_vblank_flag = 1;
   return 1;
 }
+
+#endif
 
 extern int iReferThreadStatus(int id, struct ThreadInfo* info);
 extern void ExitThread(void);
@@ -132,7 +143,7 @@ void pad_dma_report(void) {
   for (port = 0; port < 2; port++) {
     slot = 0;
     for (; slot < 4; slot++) {
-      int* open = &pad_open_slots[port];
+      int* open = &PAD_OPEN_SLOTS(port);
       if ((*open >> slot) & 1) {
         PadState* pad = &pad_states[port][slot];
         PadEEReport* report = (PadEEReport*)pad;
@@ -205,11 +216,44 @@ extern u_int pad_vblank_timeout;
 extern volatile int pad_vblank_flag;
 extern volatile PadVblankState pad_vblank;
 
+#if PADMAN_VERSION >= 0x0403
+int pad_vblank_end(PadRuntime* runtime) {
+  runtime->vblank_flag = 1;
+  return 1;
+}
+#endif
+
+#if PADMAN_VERSION == 0x0403
+int pad_capture_interrupt(void* argument) {
+  PadPortState* port = argument;
+  u_int capture = *port->capture_register;
+  port->latest_capture = capture;
+  if (port->capture_count == 3)
+    port->fourth_capture = capture;
+  port->capture_count++;
+  return 1;
+}
+#endif
+
 int pad_vblank_start(volatile PadVblankState* vblank) {
+#if PADMAN_VERSION >= 0x0403
+  ((volatile PadRuntime*)vblank)->vblank_flag = 0;
+#else
   pad_vblank_flag = 0;
+#endif
   pad_frame++;
   pad_vblank_timeout++;
   if (vblank->initialized == 1) {
+#if PADMAN_VERSION == 0x0403
+    if (((PadRuntime*)vblank)->timer_initialized == 1) {
+      pad_ports[0].previous_capture = pad_ports[0].fourth_capture;
+      pad_ports[1].previous_capture = pad_ports[1].fourth_capture;
+      pad_ports[0].fourth_capture = 0;
+      pad_ports[1].fourth_capture = 0;
+      pad_ports[0].capture_count = 0;
+      pad_ports[1].capture_count = 0;
+    }
+#endif
     if (vblank->stop_transfer == 0) {
       vblank->stop_transfer = 1;
       iSetEventFlag(vblank->event, PAD_VBLANK_EVENT_TRANSFER_START);
@@ -242,10 +286,14 @@ void pad_scheduler_thread(void) {
   PadState* pad;
   while (1) {
     pad_poll_frame++;
+#if PADMAN_VERSION >= 0x0405
+    if (pad_poll_frame % 3 == 0)
+#else
     if (pad_poll_frame % 30 == 0)
+#endif
       sio2_call_callback4();
     for (port = 0; port < 2; port++) {
-      int* open = &pad_open_slots[port];
+      int* open = &PAD_OPEN_SLOTS(port);
       for (slot = 0; slot < 4; slot++) {
         pad_transfer_set_active(port, slot, 0);
         if ((*open >> slot) & 1) {
@@ -253,7 +301,11 @@ void pad_scheduler_thread(void) {
           pad->status_bit = pad_transfer_get_connected(port, slot);
           if (pad->run_task != 0) {
             if (pad->run_task == 3) {
+#if PADMAN_VERSION >= 0x0403
+              pad->current_task = pad->run_task;
+#else
               pad->current_task = 3;
+#endif
               pad->run_task = 0;
               pad->request_state = 2;
               SetEventFlag(pad->event, PAD_EVENT_EXIT);
@@ -326,7 +378,7 @@ void pad_scheduler_thread(void) {
     }
     pad_vblank.stop_transfer = 0;
     pad_wait_clear(pad_vblank.event, PAD_VBLANK_EVENT_TRANSFER_DONE, EW_CLEAR, 0);
-    if (pad_open_slots[0] || pad_open_slots[1]) {
+    if (PAD_OPEN_SLOTS(0) || PAD_OPEN_SLOTS(1)) {
       for (port = 0; port < 2; port++) {
         for (slot = 0; slot < 4; slot++) {
           pad = &pad_states[port][slot];
@@ -743,7 +795,7 @@ int pad_other_actuator_current(int port, int slot) {
   PadState* pad;
   u_int actuator;
   for (p = 0; p < padGetPortMax(); ++p) {
-    open = &pad_open_slots[p];
+    open = &PAD_OPEN_SLOTS(p);
     for (s = 0; s < padGetSlotMax(p); ++s) {
       if ((port != p || slot != s) && ((*open >> s) & 1)) {
         pad = &pad_states[p][s];
@@ -1269,7 +1321,11 @@ int pad_parse_options(int argc, char** argv) {
 
 int start(int argc, char** argv) {
   pad_runtime.initialized = 0;
+#if PADMAN_VERSION >= 0x0403
+  pad_runtime.vblank_flag = 0;
+#else
   pad_vblank_flag = 0;
+#endif
   pad_runtime.high_priority = 20;
   pad_runtime.low_priority = 46;
   if (argc > 1)
@@ -1299,7 +1355,7 @@ extern int pad_open_slots[2];
 extern int RegisterVblankHandler(int edge, int priority, void* callback, void* arg);
 extern int ReleaseVblankHandler(int edge, void* callback);
 extern void pad_transfer_thread(void), pad_scheduler_thread(void);
-extern int pad_vblank_start(volatile PadVblankState*), pad_vblank_end(void);
+extern int pad_vblank_start(volatile PadVblankState*);
 extern void pad_command_init_find(void);
 extern void pad_command_init_mouse(void);
 extern void pad_command_init_negicon(void);
@@ -1317,6 +1373,9 @@ int padInit(void* ee_buffer) {
   int intr;
   if (pad_initialized == 1)
     padEnd();
+#if PADMAN_VERSION >= 0x0403
+  pad_runtime.timer_initialized = 0;
+#endif
   pad_debug = 1;
   pad_vblank.initialized = 0;
   pad_vblank.stop_transfer = 1;
@@ -1334,8 +1393,8 @@ int padInit(void* ee_buffer) {
   pad_command_init_jogcon();
   pad_command_init_config();
   pad_transfer_init();
-  pad_open_slots[0] = 0;
-  pad_open_slots[1] = 0;
+  PAD_OPEN_SLOTS(0) = 0;
+  PAD_OPEN_SLOTS(1) = 0;
   event.attr = EA_MULTI;
   event.initPattern = 0;
   *(volatile int*)&pad_vblank.event = CreateEventFlag(&event);
@@ -1365,7 +1424,11 @@ int padInit(void* ee_buffer) {
         CpuSuspendIntr(&intr);
         RegisterVblankHandler(0, 0x10, pad_vblank_start, (void*)&pad_vblank);
         RegisterVblankHandler(1, 0x10, pad_vblank_end, (void*)&pad_vblank);
+#if PADMAN_VERSION >= 0x0405
+        CpuResumeIntr(intr);
+#else
         CpuEnableIntr(intr);
+#endif
         pad_vblank.initialized = 1;
         pad_initialized = 1;
         return 1;
@@ -1374,13 +1437,65 @@ int padInit(void* ee_buffer) {
   }
 }
 
+#if PADMAN_VERSION == 0x0403
+#define PAD_CAPTURE_PORT0 ((volatile u_int*)0xbf8014b0)
+#define PAD_CAPTURE_PORT1 ((volatile u_int*)0xbf8014b4)
+#define PAD_CAPTURE_CONTROL (*(u_int*)0xbf8014c0)
+#define PAD_TIMER0_MODE (*(u_int*)0xbf801104)
+#define PAD_TIMER1_MODE (*(u_int*)0xbf801114)
+#define PAD_CAPTURE_INTERRUPT0 18
+#define PAD_CAPTURE_INTERRUPT1 19
+
+int pad_capture_init(void) {
+  int intr;
+  if (pad_runtime.timer_initialized == 1)
+    return 1;
+  {
+    pad_ports[0].capture_register = PAD_CAPTURE_PORT0;
+    pad_ports[1].capture_register = PAD_CAPTURE_PORT1;
+    PAD_TIMER0_MODE = 0x103;
+    PAD_TIMER1_MODE = 0x103;
+    pad_ports[0].previous_capture = 0;
+    pad_ports[1].previous_capture = 0;
+    pad_ports[0].fourth_capture = 0;
+    pad_ports[1].fourth_capture = 0;
+    pad_ports[0].capture_count = 0;
+    pad_ports[1].capture_count = 0;
+    PAD_CAPTURE_CONTROL = 0xcc;
+    CpuSuspendIntr(&intr);
+    RegisterIntrHandler(PAD_CAPTURE_INTERRUPT0, 1, pad_capture_interrupt, &pad_ports[0]);
+    EnableIntr(PAD_CAPTURE_INTERRUPT0);
+    RegisterIntrHandler(PAD_CAPTURE_INTERRUPT1, 1, pad_capture_interrupt, &pad_ports[1]);
+    EnableIntr(PAD_CAPTURE_INTERRUPT1);
+    CpuEnableIntr(intr);
+    *(volatile int*)&pad_runtime.timer_initialized = 1;
+    return 1;
+  }
+}
+
+int pad_capture_shutdown(void) {
+  if (*(volatile int*)&pad_runtime.timer_initialized == 1) {
+    while (ReleaseIntrHandler(PAD_CAPTURE_INTERRUPT0)) {
+    }
+    while (ReleaseIntrHandler(PAD_CAPTURE_INTERRUPT1)) {
+    }
+    *(volatile int*)&pad_runtime.timer_initialized = 0;
+  }
+  return 1;
+}
+#endif
+
 int padEnd(void) {
   int port, slot;
   if (!pad_initialized)
     return 1;
+#if PADMAN_VERSION == 0x0403
+  if (*(volatile int*)&pad_runtime.timer_initialized == 1)
+    pad_capture_shutdown();
+#endif
   {
     for (port = 0; port < 2; port++) {
-      int* open = &pad_open_slots[port];
+      int* open = &PAD_OPEN_SLOTS(port);
       for (slot = 0; slot < 4; slot++) {
         if ((*open >> slot) & 1)
           padPortClose(port, slot, 1);
@@ -1423,7 +1538,7 @@ int padPortOpen(int port, int slot, void* ee_buffer, void** iop_buffer) {
     return 0;
   pad = &pad_states[port][slot];
   *iop_buffer = pad->ee_commands;
-  open = &pad_open_slots[port];
+  open = &PAD_OPEN_SLOTS(port);
   pad->ee_commands[0].frame = 0;
   pad->ee_commands[1].frame = 0;
   pad->ee_commands[0].command = 0;
@@ -1517,7 +1632,7 @@ int padPortClose(int port, int slot, int wait) {
   u_int events[1];
   PadState* pad;
   int* open;
-  open = &pad_open_slots[port];
+  open = &PAD_OPEN_SLOTS(port);
   pad = &pad_states[port][slot];
   events[0] = 0;
   if (!((*open >> slot) & 1))
@@ -1540,6 +1655,9 @@ int padPortClose(int port, int slot, int wait) {
 }
 
 int padGetInBuffer(int port, int slot, u_char* buffer) {
+#if PADMAN_VERSION == 0x0403
+  PadPortState* capture = &pad_ports[port];
+#endif
   PadState* pad = &pad_states[port][slot];
   int i;
   u_short buttons;
@@ -1642,6 +1760,16 @@ int padGetInBuffer(int port, int slot, u_char* buffer) {
           buffer[19] = 0;
       }
     }
+#if PADMAN_VERSION == 0x0403
+    if (pad->current_id == 0x31) {
+      u_int value = capture->previous_capture;
+      buffer[4] = value;
+      buffer[5] = value >> 8;
+      buffer[6] = value >> 16;
+      buffer[7] = value >> 24;
+      capture->previous_capture = 0;
+    }
+#endif
     return 32;
   }
   buffer[0] = 0xff;
@@ -1734,8 +1862,13 @@ int padInfoMode(int port, int slot, int term, int offset) {
 int padSetActDirect(int port, int slot, u_char* values) {
   PadState* pad = &pad_states[port][slot];
   int i;
+#if PADMAN_VERSION >= 0x0403
+  if (pad->mode_config == 1 || pad->current_task != PAD_TASK_UPDATE)
+    return 0;
+#else
   if (pad->current_task != PAD_TASK_UPDATE)
     return 0;
+#endif
   {
     pad_check_actuator_power(port, slot, values);
     for (i = 0; i < 6; ++i)

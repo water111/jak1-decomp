@@ -37,6 +37,7 @@ pub struct CompileOutput {
 struct SourceFile {
     id: FileId,
     path: PathBuf,
+    placement: usize,
     dependencies: BTreeSet<FileId>,
     dirty: bool,
 }
@@ -45,6 +46,7 @@ struct SourceFile {
 #[derive(Clone, Debug)]
 struct ProjectDescription {
     files: BTreeMap<PathBuf, Vec<String>>,
+    file_order: Vec<PathBuf>,
     groups: BTreeMap<String, Vec<PathBuf>>,
 }
 
@@ -52,6 +54,7 @@ impl ProjectDescription {
     // Parse the project description.
     fn parse(text: &str) -> Result<Self, String> {
         let mut files = BTreeMap::<PathBuf, Vec<String>>::new();
+        let mut file_order = Vec::new();
         let mut groups = BTreeMap::<String, Vec<PathBuf>>::new();
 
         for (line_index, untrimmed_line) in text.lines().enumerate() {
@@ -80,6 +83,7 @@ impl ProjectDescription {
                             format!("duplicate file `{}`", path.display()),
                         ));
                     }
+                    file_order.push(path.clone());
                     files.insert(
                         path,
                         words[2..].iter().map(|word| (*word).to_owned()).collect(),
@@ -138,7 +142,11 @@ impl ProjectDescription {
             }
         }
 
-        Ok(Self { files, groups })
+        Ok(Self {
+            files,
+            file_order,
+            groups,
+        })
     }
 
     // Expand dependency groups.
@@ -186,7 +194,7 @@ impl Driver {
             .map_err(|error| format!("{}: {error}", project_file.display()))?;
         let description = ProjectDescription::parse(&text)?;
 
-        for path in description.files.keys() {
+        for path in &description.file_order {
             let full_path = source_directory.join(path);
             if !full_path.is_file() {
                 return Err(format!(
@@ -198,7 +206,7 @@ impl Driver {
 
         // create driver
         let mut types = TypeSystem::new();
-        let none_type = types.intern_type_spec("none");
+        let frontend = Frontend::new(&mut types);
         let mut driver = Self {
             project_file,
             source_directory,
@@ -211,11 +219,11 @@ impl Driver {
                 format!("could not initialize GOOS: {}", diagnostic.message)
             })?,
             types,
-            frontend: Frontend::new(none_type),
+            frontend,
         };
 
         // add all source files
-        for path in description.files.keys() {
+        for (placement, path) in description.file_order.iter().enumerate() {
             let id = driver.allocate_file_id()?;
             driver.ids_by_path.insert(path.clone(), id);
             driver.files.insert(
@@ -223,6 +231,7 @@ impl Driver {
                 SourceFile {
                     id,
                     path: path.clone(),
+                    placement,
                     dependencies: BTreeSet::new(),
                     dirty: true,
                 },
@@ -230,7 +239,7 @@ impl Driver {
         }
 
         // add direct dependencies
-        for path in description.files.keys() {
+        for path in &description.file_order {
             let id = driver.ids_by_path[path];
             driver.files.get_mut(&id).unwrap().dependencies = description
                 .expanded_dependencies(path)
@@ -289,7 +298,7 @@ impl Driver {
     }
 
     fn apply_project_edit(&mut self, description: ProjectDescription) -> Result<(), String> {
-        for path in description.files.keys() {
+        for path in &description.file_order {
             let full_path = self.source_directory.join(path);
             if !full_path.is_file() {
                 return Err(format!(
@@ -304,7 +313,7 @@ impl Driver {
         let old_reverse = self.reverse_dependencies.clone();
 
         let mut new_ids_by_path = BTreeMap::new();
-        for path in description.files.keys() {
+        for path in &description.file_order {
             let id = match old_ids_by_path.get(path) {
                 Some(id) => *id,
                 None => self.allocate_file_id()?,
@@ -313,7 +322,7 @@ impl Driver {
         }
 
         let mut new_files = BTreeMap::new();
-        for path in description.files.keys() {
+        for (placement, path) in description.file_order.iter().enumerate() {
             let id = new_ids_by_path[path];
             let dependencies = description
                 .expanded_dependencies(path)
@@ -326,6 +335,7 @@ impl Driver {
                 SourceFile {
                     id,
                     path: path.clone(),
+                    placement,
                     dependencies,
                     dirty,
                 },
@@ -356,11 +366,7 @@ impl Driver {
         let mut invalidated = dependent_closure(&changed, &old_reverse);
         invalidated.extend(dependent_closure(&changed, &new_reverse));
 
-        for id in &removed {
-            if let Some(file) = old_files.get(id) {
-                self.remove_definitions(file);
-            }
-        }
+        self.remove_definition_ids(removed.iter().copied());
 
         self.files = new_files;
         self.ids_by_path = new_ids_by_path;
@@ -395,17 +401,17 @@ impl Driver {
             .collect();
 
         // All stale definitions are removed before any dirty source is compiled.
-        for id in &dirty {
-            let file = self.files[id].clone();
-            self.remove_definitions(&file);
-        }
+        self.remove_definition_ids(dirty.iter().copied());
 
         for id in dirty {
             let file = self.files[&id].clone();
             let dependency_ids = self.transitive_dependencies(id);
+            println!("compiling {}", file.path.display());
             let output = match self.compile(&file, &dependency_ids) {
                 Ok(output) => output,
                 Err(messages) => {
+                    // if compilation fails, remove definitions.
+                    self.remove_definitions(&file);
                     self.print_messages(&file.path, &messages);
                     let message = messages
                         .iter()
@@ -437,10 +443,10 @@ impl Driver {
             .iter()
             .map(|(id, file)| (*id, file.dependencies.len()))
             .collect();
-        let mut ready: BTreeSet<(PathBuf, FileId)> = remaining_dependencies
+        let mut ready: BTreeSet<(usize, FileId)> = remaining_dependencies
             .iter()
             .filter(|(_, count)| **count == 0)
-            .map(|(id, _)| (self.files[id].path.clone(), *id))
+            .map(|(id, _)| (self.files[id].placement, *id))
             .collect();
         let mut order = Vec::with_capacity(self.files.len());
 
@@ -451,7 +457,7 @@ impl Driver {
                     let count = remaining_dependencies.get_mut(dependent).unwrap();
                     *count -= 1;
                     if *count == 0 {
-                        ready.insert((self.files[dependent].path.clone(), *dependent));
+                        ready.insert((self.files[dependent].placement, *dependent));
                     }
                 }
             }
@@ -485,6 +491,16 @@ impl Driver {
     // compiler subsystems own the definitions and generated object.
     fn remove_definitions(&mut self, source_file: &SourceFile) {
         self.types.remove_definitions(source_file.id);
+        self.frontend.remove_definitions(source_file.id);
+    }
+
+    fn remove_definition_ids(&mut self, owners: impl IntoIterator<Item = FileId>) {
+        let owners: Vec<FileId> = owners.into_iter().collect();
+        for owner in &owners {
+            self.types.remove_definitions(*owner);
+        }
+        self.frontend
+            .remove_definitions_batch(owners.iter().copied());
     }
 
     fn compile(
@@ -509,6 +525,8 @@ impl Driver {
                 source_file.id,
                 parsed.source_id,
                 visibility,
+                &mut self.types,
+                &mut self.goos,
                 &parsed.objects,
             )
             .map_err(|diagnostic| vec![diagnostic])?;
@@ -799,7 +817,7 @@ mod tests {
         let mut driver = directory.driver("file a.gc\n");
 
         let error = driver.rebuild_dirty().unwrap_err();
-        assert!(error.contains("IR generation is not implemented"));
+        assert!(error.contains("GOAL form `unsupported` is not implemented"));
         assert_eq!(dirty_paths(&driver), [PathBuf::from("a.gc")].into());
         assert!(!directory.0.join("build/a.o").exists());
     }
@@ -906,5 +924,38 @@ mod tests {
         let object = crate::goal_object::GoalObject::read(&object).unwrap();
         assert_eq!(object.name, "gstring-h");
         assert_eq!(object.segments[Segment::TopLevel.index()].len(), 24);
+    }
+
+    #[test]
+    fn compiles_and_installs_an_identity_defun() {
+        let directory = TestDirectory::new();
+        directory.write(
+            "gcommon.gc",
+            "(defun identity ((value object)) \"Identity.\" value)",
+        );
+        let mut driver = directory.driver("file gcommon.gc\n");
+        driver.rebuild_dirty().unwrap();
+
+        let object = fs::read(directory.0.join("build/gcommon.o")).unwrap();
+        let object = crate::goal_object::GoalObject::read(&object).unwrap();
+        let functions = object.functions().unwrap();
+        assert_eq!(functions.len(), 2);
+        assert!(functions.iter().any(|function| function.name == "identity"));
+        let identity = functions
+            .iter()
+            .find(|function| function.name == "identity")
+            .unwrap();
+        assert_eq!(
+            object.word(crate::goal_object::Location {
+                segment: Segment::Main,
+                offset: identity.start,
+            }),
+            Ok(crate::ee::encode_register(
+                crate::ee::RegisterOpcode::Or,
+                crate::ir::Gpr::V0,
+                crate::ir::Gpr::A0,
+                crate::ir::Gpr::R0,
+            ))
+        );
     }
 }

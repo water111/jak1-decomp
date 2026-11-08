@@ -3,6 +3,9 @@
 #include "sce/iop/mcman/mcman.h"
 #include "sce/iop/types.h"
 
+int mcman_shutdown(int mode);
+int mcman_is_dot_path(const char* path);
+
 #define MCMAN_PORTS 2
 #define MCMAN_SLOTS 4
 #define MCMAN_HANDLES 3

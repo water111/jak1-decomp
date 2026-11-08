@@ -27,6 +27,18 @@ static void* pad_rpc_end(u_int* data) {
   return data;
 }
 
+#if PADMAN_VERSION == 0x0403
+static void* pad_rpc_capture_init(u_int* data) {
+  data[3] = pad_capture_init();
+  return data;
+}
+
+static void* pad_rpc_capture_shutdown(u_int* data) {
+  data[3] = pad_capture_shutdown();
+  return data;
+}
+#endif
+
 static void* pad_rpc_debug(u_int* data) {
   data[2] = padSetDebug(data[1]);
   return data;
@@ -156,6 +168,14 @@ static void* pad_rpc_dispatch(u_int function, void* data, int size) {
     case PAD_RPC_SET_DEBUG:
       pad_rpc_debug((u_int*)function);
       break;
+#if PADMAN_VERSION == 0x0403
+    case PAD_RPC_CAPTURE_INIT:
+      pad_rpc_capture_init((u_int*)function);
+      break;
+    case PAD_RPC_CAPTURE_SHUTDOWN:
+      pad_rpc_capture_shutdown((u_int*)function);
+      break;
+#endif
     case PAD_RPC_NOOP:
       break;
     default:

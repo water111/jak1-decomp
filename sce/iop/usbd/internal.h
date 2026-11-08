@@ -2,6 +2,10 @@
 #define SCE_IOP_USBD_INTERNAL_H
 #include "sce/iop/usbd/usbd.h"
 
+#ifndef USBD_DRIVER_VERSION
+#define USBD_DRIVER_VERSION 0x000f00
+#endif
+
 struct UsbTimer {
   int active;
   struct UsbTimer* next;
@@ -26,6 +30,9 @@ struct UsbEndpoint {
   u_int next_frame;
   struct UsbTimer cleanup_timer;
   u_int alignment;
+#if USBD_DRIVER_VERSION >= 0x010000
+  u_char schedule_phase, schedule_frames, schedule_interval, schedule_cost;
+#endif
 };
 
 struct UsbRequest {
@@ -44,6 +51,15 @@ struct UsbRequest {
   void* callback_argument;
   UsbCallback user_callback;
   u_int callback_gp;
+#if USBD_DRIVER_VERSION >= 0x010000
+  UsbMultiIsoRequest multi_iso;
+#endif
+};
+
+struct UsbReportDescriptor {
+  struct UsbReportDescriptor *next, *previous;
+  int configuration, interface, length;
+  u_char data[0];
 };
 
 struct UsbDevice {
@@ -54,6 +70,10 @@ struct UsbDevice {
   struct UsbEndpoint* endpoint_tail;
   UsbDriver* driver;
   u_char status, address, low_speed, reset_pending;
+
+#if USBD_DRIVER_VERSION >= 0x010000
+  int power_state;
+#endif
   struct UsbDevice* child_head;
   struct UsbDevice* child_tail;
   struct UsbDevice* parent;
@@ -65,6 +85,11 @@ struct UsbDevice {
   u_char* descriptors;
   u_char* descriptor_end;
   int descriptor_phase;
+#if USBD_DRIVER_VERSION >= 0x010000
+  struct UsbReportDescriptor* current_report;
+  struct UsbReportDescriptor* reports;
+  struct UsbReportDescriptor* last_report;
+#endif
 };
 
 struct UsbTransferDescriptor {
@@ -146,6 +171,10 @@ struct UsbHostState {
   struct UsbEndpoint* free_endpoint_tail;
   struct UsbEndpoint* scheduled_head;
   struct UsbEndpoint* scheduled_tail;
+
+#if USBD_DRIVER_VERSION >= 0x010000
+  int periodic_load[32];
+#endif
   int reset_active;
   u_int interrupt_count;
   u_int interrupt_counts[8];
@@ -188,6 +217,13 @@ struct UsbAutoloader {
 extern struct UsbAutoloader usb_autoloader_state;
 #define usb_autoloader usb_autoloader_state.driver
 extern struct UsbHostState* usb_host;
+extern const char* usb_version;
+int usb_initialize_controller(void);
+int usb_initialize_hubs(void);
+void usb_reset_root_ports(void);
+int usb_shutdown(void);
+void usb_shutdown_controller(void);
+void usb_shutdown_hubs(void);
 
 struct UsbConfiguration {
   int devices;
@@ -200,6 +236,10 @@ struct UsbConfiguration {
   int ports;
   int allocated_bytes;
   int thread_priorities[2];
+
+#if USBD_DRIVER_VERSION >= 0x010000
+  int read_report_descriptors;
+#endif
   struct UsbHostState* host;
 };
 extern struct UsbConfiguration usb_configuration;

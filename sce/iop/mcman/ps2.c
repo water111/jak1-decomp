@@ -377,12 +377,18 @@ int mcman_fatWseek(int fd) {
       cluster = mcman_findfree2(port, slot, 1);
       if (cluster < 0)
         return cluster;
+#if MCMAN_VERSION >= 0x0220
+      mcman_get1stcacheEntp();
+#else
       cache = mcman_get1stcacheEntp();
+#endif
       handle->free_link = cluster;
       result = mcman_close2(fd);
       if (result != 0)
         return result;
+#if MCMAN_VERSION < 0x0220
       mcman_addcacheentry(cache);
+#endif
       McFlushCache(port, slot);
     }
   }
@@ -528,7 +534,11 @@ int mcman_setinfo2(int port, int slot, const char* path, struct McDirectoryEntry
   struct McDirectoryCache cache;
   struct McFsEntry* entry;
   int result;
+#if MCMAN_VERSION >= 0x0220
+  int mask;
+#else
   short mask;
+#endif
   result = mcman_cachedirentry(port, slot, path, &cache, &entry, 1);
   if (result == 3) {
   denied:
@@ -538,6 +548,10 @@ int mcman_setinfo2(int port, int slot, const char* path, struct McDirectoryEntry
     return -4;
   if (result != 0)
     return result;
+#if MCMAN_VERSION >= 0x0220
+  if (cache.cluster == 0 && cache.entry_index < 2)
+    return -5;
+#endif
   if (flags & 16) {
     if (strcmp(".", info->name) == 0 || strcmp("..", info->name) == 0)
       return -4;
@@ -564,13 +578,21 @@ int mcman_setinfo2(int port, int slot, const char* path, struct McDirectoryEntry
         return result;
       } else {
         if (result == 2)
+#if MCMAN_VERSION >= 0x0220
+          goto denied_inner;
+#else
           goto denied;
+#endif
         return result;
       }
     }
     goto update;
   invalid:
     return -4;
+#if MCMAN_VERSION >= 0x0220
+  denied_inner:
+    return -5;
+#endif
   }
 update:
   result = McReadDirEntry(port, slot, cache.cluster, cache.entry_index, &entry);
@@ -580,7 +602,12 @@ update:
   if (flags & 8)
     entry->attributes = info->application_data;
   if ((flags & 4) && (entry->mode & 32)) {
-    mask = -1;
+    mask =
+#if MCMAN_VERSION >= 0x0220
+        ~0x8030;
+#else
+        -1;
+#endif
     if (!mcman_allow_ps1)
       mask = 0x180f;
     entry->mode = (entry->mode & ~mask) | (info->attributes & mask);
@@ -588,7 +615,12 @@ update:
   if ((flags & 512) && (entry->mode & 32)) {
     mask = 0x180f;
     if (mcman_allow_ps1)
-      mask = -1;
+      mask =
+#if MCMAN_VERSION >= 0x0220
+          ~0x8030;
+#else
+          -1;
+#endif
     entry->mode = (entry->mode & ~mask) | (info->attributes & mask);
   }
   if (flags & 1)
@@ -1278,6 +1310,9 @@ int mcman_chdir(int port, int slot, const char* path, char* current) {
   struct McFsEntry *entry, *parent;
   McDeviceInfo* device;
   int result, length, index, cluster;
+#if MCMAN_VERSION >= 0x0220
+  int saved_cluster, saved_entry;
+#endif
   if (!mcman_checkpath(path))
     return -4;
   cache.maximum_entries = -1;
@@ -1287,6 +1322,10 @@ int mcman_chdir(int port, int slot, const char* path, char* current) {
     return result;
   if (result == 1 || result == 2)
     return -4;
+#if MCMAN_VERSION >= 0x0220
+  saved_cluster = device->root_cluster_copy;
+  saved_entry = device->unknown[0];
+#endif
   device->root_cluster_copy = cache.cluster;
   device->unknown[0] = cache.entry_index;
   cluster = cache.cluster;
@@ -1309,8 +1348,13 @@ int mcman_chdir(int port, int slot, const char* path, char* current) {
   result = McReadDirEntry(port, slot, parent->cluster, 0, &parent);
   if (result != 0)
     return result;
-  if (device->root_cluster_copy != parent->cluster || device->unknown[0] != parent->parent_entry)
+  if (device->root_cluster_copy != parent->cluster || device->unknown[0] != parent->parent_entry) {
+#if MCMAN_VERSION >= 0x0220
+    device->root_cluster_copy = saved_cluster;
+    device->unknown[0] = saved_entry;
+#endif
     return -6;
+  }
   current[0] = 0;
   while (strcmp(entry->name, ".") != 0) {
     if (strlen(entry->name) < 32)
@@ -1485,11 +1529,23 @@ int McSetDirEntryState(int port, int slot, int cluster, int index, int exists) {
     if (result != 0)
       return result;
     if (exists == 0) {
+#if MCMAN_VERSION >= 0x0220
+      if (!(next & 0x80000000))
+        break;
+#endif
       next &= 0x7fffffff;
       device->free_clusters++;
       if (current < (int)device->unknown[1])
+#if MCMAN_VERSION >= 0x0222
+        device->unknown[1] = current;
+#else
         device->unknown[1] = next;
+#endif
     } else {
+#if MCMAN_VERSION >= 0x0220
+      if (next & 0x80000000)
+        break;
+#endif
       next |= 0x80000000;
       device->free_clusters--;
     }
@@ -1513,6 +1569,10 @@ int mcman_getdir2(int port,
                   int count,
                   struct McDirectoryEntry* output) {
   struct McFsEntry* entry;
+#if MCMAN_VERSION >= 0x0220
+  struct McDirectoryCache cache;
+  struct McFsEntry* parent;
+#endif
   int result, position, done = 0;
   if ((flags & 0xffff) == 0) {
     strncpy(mcman_directory_path, path, 1023);
@@ -1527,11 +1587,23 @@ int mcman_getdir2(int port,
     else
       mcman_directory_path[0] = 0;
     mcman_directory_pattern = path + position + 1;
+#if MCMAN_VERSION >= 0x0220
+    cache.maximum_entries = -1;
+    result = mcman_cachedirentry(port, slot, mcman_directory_path, &cache, &entry, 1);
+#else
     result = mcman_cachedirentry(port, slot, mcman_directory_path, 0, &entry, 1);
+#endif
     if (result > 0)
       return -4;
     if (result < 0)
       return result;
+#if MCMAN_VERSION >= 0x0220
+    result = McReadDirEntry(port, slot, entry->cluster, entry->parent_entry, &parent);
+    if (result != 0)
+      return result;
+    if (cache.cluster != parent->cluster || cache.entry_index != parent->parent_entry)
+      return -6;
+#endif
     if (!(entry->mode & 32)) {
       mcman_directory_cluster = -1;
       return -4;
@@ -1555,6 +1627,12 @@ int mcman_getdir2(int port,
     if (!(entry->mode & 0x8000) || ((entry->mode & 0x2000) && !mcman_allow_ps1) ||
         !mcman_checkdirpath(entry->name, mcman_directory_pattern))
       continue;
+#if MCMAN_VERSION >= 0x0220
+    if (count < 0) {
+      done++;
+      continue;
+    }
+#endif
     mcman_wmemset(&output[done], sizeof(*output), 0);
     if (mcman_directory_index == 2) {
       result = McReadDirEntry(port, slot, mcman_directory_cluster, 0, &entry);
@@ -2123,6 +2201,10 @@ int mcman_rename2(int port, int slot, const char* source, const char* target) {
     result = McGetFATentry(port, slot, cluster, &fat_entry);
     if (result != 0)
       return result;
+#if MCMAN_VERSION >= 0x0220
+    if (!(fat_entry & 0x80000000))
+      break;
+#endif
     fat_entry &= 0x7fffffff;
     if (cluster < (int)device->unknown[1])
       device->unknown[1] = fat_entry;

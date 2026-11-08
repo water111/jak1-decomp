@@ -82,6 +82,14 @@ int sd_init_state(u_int mode) {
   return 0;
 }
 
+#if LIBSD_VERSION >= 0x0301
+void sd_init_module_state(void) {
+  sd_initialized = 0;
+  sd_transfer_events[0] = 0;
+  sd_transfer_events[1] = 0;
+}
+#endif
+
 int sceSdInit(u_int mode) {
   sd_init_hardware();
   if (sd_init_state(mode) < 0)

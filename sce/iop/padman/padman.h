@@ -1,6 +1,10 @@
 #ifndef SCE_IOP_PADMAN_H
 #define SCE_IOP_PADMAN_H
 #include "sce/iop/types.h"
+
+#ifndef PADMAN_VERSION
+#define PADMAN_VERSION 0x0402
+#endif
 int padInit(void* ee_buffer);
 int padEnd(void);
 int padPortOpen(int port, int slot, void* ee_buffer, void** iop_buffer);
@@ -20,4 +24,8 @@ int padGetPortMax(void);
 int padGetSlotMax(int port);
 u_int padGetModVersion(void);
 int padSetDebug(int enabled);
+#if PADMAN_VERSION == 0x0403
+int pad_capture_init(void);
+int pad_capture_shutdown(void);
+#endif
 #endif

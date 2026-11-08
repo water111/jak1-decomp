@@ -1,7 +1,7 @@
 use std::cmp::Reverse;
 use std::collections::{HashMap, HashSet};
 
-use crate::frontend::FunctionData;
+use crate::frontend::{FunctionData, RegisterReservation};
 use crate::ir::{
     ARGUMENT_REGISTERS, BranchCondition, BranchDelay, FPR_ALLOCATION_ORDER, GPR_ALLOCATION_ORDER,
     IrInstruction, PhysicalRegister, Register, RegisterEffects, VirtualRegister, VirtualRegisterId,
@@ -73,6 +73,31 @@ pub fn analyze_liveness(function: &FunctionData) -> Result<Liveness, String> {
 }
 
 fn validate_function(function: &FunctionData) -> Result<(), String> {
+    for register in &function.single_web_registers {
+        function.registers.get(register.0 as usize).ok_or_else(|| {
+            format!(
+                "single-web binding refers to unknown virtual register {}",
+                register.0
+            )
+        })?;
+    }
+    for reservation in &function.register_reservations {
+        if reservation.start > reservation.end || reservation.end > function.ir.len() {
+            return Err(format!(
+                "register reservation {} has invalid instruction range {}..{}",
+                reservation.register.0, reservation.start, reservation.end
+            ));
+        }
+        function
+            .registers
+            .get(reservation.register.0 as usize)
+            .ok_or_else(|| {
+                format!(
+                    "register reservation refers to unknown virtual register {}",
+                    reservation.register.0
+                )
+            })?;
+    }
     for (index, instruction) in function.ir.iter().enumerate() {
         if let IrInstruction::Call { argument_count } = instruction
             && usize::from(*argument_count) > ARGUMENT_REGISTERS.len()
@@ -282,6 +307,7 @@ impl DisjointSets {
 struct SplitFunction {
     instructions: Vec<IrInstruction>,
     registers: Vec<VirtualRegister>,
+    reservations: Vec<RegisterReservation>,
 }
 
 fn split_live_ranges(function: &FunctionData) -> Result<SplitFunction, String> {
@@ -289,6 +315,7 @@ fn split_live_ranges(function: &FunctionData) -> Result<SplitFunction, String> {
         return Ok(SplitFunction {
             instructions: Vec::new(),
             registers: Vec::new(),
+            reservations: Vec::new(),
         });
     }
     let effects: Vec<_> = function
@@ -363,10 +390,21 @@ fn split_live_ranges(function: &FunctionData) -> Result<SplitFunction, String> {
         }
     }
 
+    let forced_registers: HashSet<_> = function
+        .single_web_registers
+        .iter()
+        .copied()
+        .chain(
+            function
+                .register_reservations
+                .iter()
+                .map(|reservation| reservation.register),
+        )
+        .collect();
     let mut sets = DisjointSets::new(definition_registers.len());
     let mut first_forced_definition = HashMap::new();
     for (definition, &register) in definition_registers.iter().enumerate() {
-        if function.registers[register.0 as usize].force_single_web {
+        if forced_registers.contains(&register) {
             let first = *first_forced_definition
                 .entry(register)
                 .or_insert(definition);
@@ -416,6 +454,24 @@ fn split_live_ranges(function: &FunctionData) -> Result<SplitFunction, String> {
         }
     }
 
+    let mut reservation_definitions = HashMap::new();
+    for reservation in &function.register_reservations {
+        let register = reservation.register;
+        if reservation_definitions.contains_key(&register) {
+            continue;
+        }
+        let definition = match first_forced_definition.get(&register) {
+            Some(definition) => *definition,
+            None => {
+                let definition = sets.add();
+                definition_registers.push(register);
+                first_forced_definition.insert(register, definition);
+                definition
+            }
+        };
+        reservation_definitions.insert(register, definition);
+    }
+
     let mut root_members: HashMap<usize, Vec<usize>> = HashMap::new();
     for definition in 0..definition_registers.len() {
         root_members
@@ -442,7 +498,6 @@ fn split_live_ranges(function: &FunctionData) -> Result<SplitFunction, String> {
         web_for_root.insert(root, id);
         registers.push(VirtualRegister {
             number: next_number[class],
-            force_single_web: original.force_single_web,
             ..original
         });
         next_number[class] = next_number[class]
@@ -479,9 +534,23 @@ fn split_live_ranges(function: &FunctionData) -> Result<SplitFunction, String> {
         })
         .collect();
 
+    let reservations = function
+        .register_reservations
+        .iter()
+        .map(|reservation| {
+            let definition = reservation_definitions[&reservation.register];
+            RegisterReservation {
+                register: web_for_root[&sets.find(definition)],
+                start: reservation.start,
+                end: reservation.end,
+            }
+        })
+        .collect();
+
     Ok(SplitFunction {
         instructions,
         registers,
+        reservations,
     })
 }
 
@@ -605,6 +674,9 @@ fn color(
             }
         }
     }
+    for reservation in &split.reservations {
+        seen_virtual[reservation.register.0 as usize] = true;
+    }
     let virtual_nodes = seen_virtual
         .iter()
         .enumerate()
@@ -643,6 +715,50 @@ fn color(
                         == node_class(graph.nodes[live], &split.registers)
                 {
                     graph.edge(definition, live);
+                }
+            }
+        }
+    }
+
+    for reservation in &split.reservations {
+        let reserved = graph
+            .index(Node::Virtual(reservation.register))
+            .expect("reserved virtual register is in the graph");
+        let mut conflicts = HashSet::new();
+        for index in reservation.start..reservation.end {
+            conflicts.extend(effects[index].uses.iter().copied());
+            conflicts.extend(effects[index].definitions.iter().copied());
+            conflicts.extend(liveness.live_in[index].iter().copied());
+            conflicts.extend(liveness.live_out[index].iter().copied());
+        }
+        for conflict in conflicts {
+            let Some(conflict) = canonical_node(conflict, &graph) else {
+                continue;
+            };
+            if node_class(graph.nodes[reserved], &split.registers)
+                == node_class(graph.nodes[conflict], &split.registers)
+            {
+                graph.edge(reserved, conflict);
+            }
+        }
+    }
+    for left in 0..split.reservations.len() {
+        for right in left + 1..split.reservations.len() {
+            let left_reservation = split.reservations[left];
+            let right_reservation = split.reservations[right];
+            if left_reservation.start < right_reservation.end
+                && right_reservation.start < left_reservation.end
+            {
+                let left = graph
+                    .index(Node::Virtual(left_reservation.register))
+                    .expect("reserved virtual register is in the graph");
+                let right = graph
+                    .index(Node::Virtual(right_reservation.register))
+                    .expect("reserved virtual register is in the graph");
+                if node_class(graph.nodes[left], &split.registers)
+                    == node_class(graph.nodes[right], &split.registers)
+                {
+                    graph.edge(left, right);
                 }
             }
         }
@@ -1056,6 +1172,51 @@ mod tests {
     }
 
     #[test]
+    fn lexical_reservation_keeps_one_web_and_blocks_scope_reuse() {
+        let (mut function, ty) = function();
+        let reserved = vreg(&mut function, ty);
+        let temporary = vreg(&mut function, ty);
+
+        function.ir.push(operation(&[], &[reserved]));
+        function.ir.push(operation(&[reserved], &[]));
+        function.ir.push(operation(&[], &[temporary]));
+        function.ir.push(operation(&[temporary], &[]));
+        function.ir.push(operation(&[], &[reserved]));
+        function.ir.push(operation(&[reserved], &[]));
+        function.register_reservations.push(RegisterReservation {
+            register: match reserved {
+                Register::Virtual(register) => register,
+                Register::Physical(_) => unreachable!(),
+            },
+            start: 0,
+            end: function.ir.len(),
+        });
+
+        let allocation = allocate_registers(&function).unwrap();
+        let Register::Virtual(first_reserved) =
+            allocation.instructions[0].register_effects().definitions[0]
+        else {
+            unreachable!()
+        };
+        let Register::Virtual(second_reserved) =
+            allocation.instructions[4].register_effects().definitions[0]
+        else {
+            unreachable!()
+        };
+        let Register::Virtual(temporary) =
+            allocation.instructions[2].register_effects().definitions[0]
+        else {
+            unreachable!()
+        };
+
+        assert_eq!(first_reserved, second_reserved);
+        assert_ne!(
+            allocation.assignments[first_reserved.0 as usize],
+            allocation.assignments[temporary.0 as usize]
+        );
+    }
+
+    #[test]
     fn definitions_reaching_a_common_use_share_a_web() {
         let (mut function, ty) = function();
         let condition = vreg(&mut function, ty);
@@ -1129,6 +1290,7 @@ mod tests {
             must_emit: false,
         });
         function.ir.push(IrInstruction::ConditionalMove {
+            operation: crate::ir::ConditionalMoveOperation::NonZero,
             destination: result,
             source: alternate,
             condition,

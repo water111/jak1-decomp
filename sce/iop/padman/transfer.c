@@ -1,4 +1,9 @@
 #include "sce/iop/padman/transfer.h"
+#include "sce/iop/padman/padman.h"
+#if PADMAN_VERSION >= 0x0403
+#define sio2_pad_init_legacy sio2_pad_init
+#define sio2_transfer_legacy sio2_transfer
+#endif
 #include "sce/iop/padman/commands.h"
 
 typedef struct PadTransferSlot {
@@ -67,7 +72,7 @@ int pad_transfer_append(int packet, int port, int slot) {
     transfer.input[transfer.input_size++] = transfer_slots[port][slot].input[i];
   transfer.output_size += transfer_slots[port][slot].output_size;
   transfer.send1[port] = transfer_slots[port][slot].control1;
-  transfer.send2[port] = transfer_slots[port][slot].control2;
+  transfer.send2[port].value = transfer_slots[port][slot].control2;
   transfer.send3[packet++] = (transfer_slots[port][slot].control3 & ~3) | (port & 3);
   transfer.send3[packet] = 0;
   return packet;

@@ -14,7 +14,6 @@
 #define USB_CLASS_HUB 9
 
 extern UsbDriver usb_hub_driver;
-void bzero(void* memory, int size);
 struct UsbHub* usb_alloc_hub(void);
 void usb_free_hub(struct UsbHub* hub);
 struct UsbDevice* usb_hub_child(struct UsbDevice* parent, int port);
@@ -160,6 +159,35 @@ void usb_reset_hub_port(struct UsbDevice* device) {
   usb_hub_control(hub, 0x23, 3, 4, device->port, 0, 0, usb_hub_reset_complete, "hub_port_reset");
 }
 
+#if USBD_DRIVER_VERSION >= 0x010000
+void usb_update_hub_power(struct UsbHub* hub) {
+  struct UsbDevice* device = hub->device;
+  switch (device->power_state) {
+    case 0:
+      if (hub->self_powered) {
+        if (hub->max_power > 0)
+          device->power_state = 3;
+        else
+          device->power_state = 2;
+      } else {
+        if (hub->max_power > 0)
+          device->power_state = 1;
+        else
+          device->power_state = 0;
+      }
+      break;
+    case 3:
+    case 4:
+    case 5:
+      if (hub->status & 1)
+        device->power_state = 4;
+      else
+        device->power_state = 5;
+      break;
+  }
+}
+#endif
+
 void usb_hub_status(struct UsbRequest* request) {
   struct UsbHub* hub = request->callback_argument;
   if (request->result)
@@ -167,6 +195,9 @@ void usb_hub_status(struct UsbRequest* request) {
   if (hub->changes & 1) {
     hub->changes &= ~1;
     usb_hub_control(hub, 0x20, 1, 0, 0, 0, 0, usb_hub_status, "clear_hub_feature");
+#if USBD_DRIVER_VERSION >= 0x010000
+    usb_update_hub_power(hub);
+#endif
   } else if (hub->changes & 2) {
     hub->changes &= ~2;
     usb_hub_control(hub, 0x20, 1, 1, 0, 0, 0, usb_hub_status, "clear_hub_feature");
@@ -207,7 +238,11 @@ void usb_hub_power_ports(struct UsbRequest* request) {
   struct UsbHub* hub = request->callback_argument;
   if (hub->current_port > 0 && request->result)
     return;
-  if (++hub->current_port <= hub->port_count)
+  if (++hub->current_port <= hub->port_count
+#if USBD_DRIVER_VERSION >= 0x010000
+      && hub->current_port <= usb_configuration.ports
+#endif
+  )
     usb_hub_control(hub, 0x23, 3, 8, hub->current_port, 0, 0, usb_hub_power_ports,
                     "set_port_power");
   else
@@ -220,6 +255,9 @@ void usb_hub_create_ports(struct UsbRequest* request) {
   int i;
   if (request->result)
     return;
+#if USBD_DRIVER_VERSION >= 0x010000
+  usb_update_hub_power(hub);
+#endif
   hub->reset_port = 0;
   hub->port_count = hub->descriptor[2];
   hub->current_port = 0;
@@ -243,7 +281,11 @@ void usb_hub_get_status(struct UsbRequest* request) {
 void usb_hub_descriptor_complete(struct UsbRequest* request) {
   struct UsbHub* hub = request->callback_argument;
   u_char* descriptor = hub->descriptor;
-  if (!request->result && descriptor[2] <= usb_configuration.ports)
+  if (!request->result
+#if USBD_DRIVER_VERSION < 0x010000
+      && descriptor[2] <= usb_configuration.ports
+#endif
+  )
     usb_hub_get_status(request);
 }
 
@@ -255,7 +297,10 @@ void usb_hub_configured(struct UsbRequest* request) {
   if (descriptor[1] != USB_DESCRIPTOR_HUB)
     usb_hub_control(hub, 0xa0, 6, USB_DESCRIPTOR_HUB << 8, 0, USB_HUB_DESCRIPTOR_SIZE, descriptor,
                     usb_hub_descriptor_complete, "set_configuration_done");
-  else if (descriptor[2] <= usb_configuration.ports)
+  else
+#if USBD_DRIVER_VERSION < 0x010000
+      if (descriptor[2] <= usb_configuration.ports)
+#endif
     usb_hub_get_status(request);
 }
 
@@ -280,14 +325,19 @@ int usb_hub_attach(int id) {
   endpoint = usb_scan_descriptor(id, interface, 5);
   if (!endpoint || !(endpoint->address & 0x80) || (endpoint->attributes & 3) != 3)
     return -1;
+#if USBD_DRIVER_VERSION < 0x010000
   if ((usb_configuration.ports + 8) / 8 <
       endpoint->max_packet_low + (endpoint->max_packet_high << 8))
     return -1;
+#endif
   descriptor = usb_scan_descriptor(id, endpoint, USB_DESCRIPTOR_HUB);
   hub = usb_alloc_hub();
   if (!hub)
     return -1;
   device->private_data = hub;
+#if USBD_DRIVER_VERSION >= 0x010000
+  hub->device = device;
+#endif
   hub->control = device->endpoint_head;
   pipe = usb_open_pipe(device, endpoint, 0);
   if (!pipe) {
@@ -302,6 +352,9 @@ int usb_hub_attach(int id) {
   hub->control_request.callback_argument = hub;
   hub->max_power = config->max_power;
   hub->self_powered = (config->attributes >> 6) & 1;
+#if USBD_DRIVER_VERSION >= 0x010000
+  usb_update_hub_power(hub);
+#endif
   if (descriptor) {
     int length = USB_HUB_DESCRIPTOR_SIZE;
     if (descriptor[0] < length)
@@ -335,6 +388,9 @@ int usb_initialize_hubs(void) {
   usb_free_hubs = hub;
   if (!hub)
     return -1;
+#if USBD_DRIVER_VERSION >= 0x010000
+  usb_hub_memory = hub;
+#endif
   bzero(hub, size);
   usb_configuration.allocated_bytes += size;
   for (i = 0; i < usb_configuration.hubs; ++i, ++hub)
@@ -344,7 +400,17 @@ int usb_initialize_hubs(void) {
   return 0;
 }
 
+#if USBD_DRIVER_VERSION >= 0x010000
+void usb_shutdown_hubs(void) {
+  usb_unregister_driver(&usb_hub_driver);
+  usb_free_memory(usb_hub_memory);
+}
+#endif
+
 struct UsbHub* usb_free_hubs = 0;
+#if USBD_DRIVER_VERSION >= 0x010000
+struct UsbHub* usb_hub_memory = 0;
+#endif
 u_int usb_next_hub_id = 0;
 UsbDriver usb_hub_driver = {
     0, 0, "hub", usb_hub_probe, usb_hub_attach, usb_hub_detach, {0, 0, 0, 0, 0}, 0};

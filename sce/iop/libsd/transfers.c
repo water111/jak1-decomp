@@ -14,6 +14,15 @@ extern int sd_voice_addresses[2];
 #define VOLUME_REG(offset) \
   sd_spu_registers[sd_current_core * (SPU2_VOLUME_CORE_STRIDE / 2) + (offset) / 2]
 
+#if LIBSD_VERSION >= 0x0301
+void sd_init_transfer_state(void) {
+  volatile int reset = 0;
+  reset = 0;
+  reset = 0;
+  reset = 0;
+}
+#endif
+
 int sd_reset(int mode) {
   int i;
   SPU2_REG(0, SPU2_SPDIF_OUTPUT_OFFSET) = 0;
@@ -61,6 +70,7 @@ int sd_reset(int mode) {
 extern volatile u_short* sd_spu_registers;
 extern volatile u_int* sd_dma_delay;
 
+#if LIBSD_VERSION < 0x0301
 void sd_set_effect_register(int reg, int value) {
   volatile u_short* address =
       (volatile u_short*)((sd_current_core * (SPU2_CORE_STRIDE / 2) + reg) * 2 +
@@ -69,6 +79,8 @@ void sd_set_effect_register(int reg, int value) {
   address[0] = shifted >> 16;
   address[1] = shifted;
 }
+
+#endif
 
 void sd_set_address(int reg, u_int value, int bytes) {
   volatile u_short* address;

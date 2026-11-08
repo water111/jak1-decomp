@@ -12,4 +12,5 @@ int QueryMaxFreeMemSize(void);
 
 extern void* Kprintf(const char* format, ...);
 
+unsigned long QueryMemSize(void);
 #endif

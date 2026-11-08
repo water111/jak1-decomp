@@ -28,6 +28,7 @@ struct McIoCard {
 extern struct McIoCard mcman_io_card;
 extern int mcman_io_semaphore;
 int mcman_ioerrcode(int result);
+int mcman_shutdown_device(void);
 void mcman_unit2card(u_int unit);
 int mcman_dread(int fd, struct McIoDirEntry* entry);
 int mcman_getstat(int port, int slot, const char* path, struct McIoStat* info);

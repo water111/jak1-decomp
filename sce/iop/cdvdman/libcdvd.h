@@ -44,6 +44,7 @@ typedef struct {
 } sceCdCLOCK;
 
 int _sceCdRC(sceCdCLOCK* clock);
+int sceCdReadClock(sceCdCLOCK* clock);
 
 enum SceCdError {
   SCECdErFAIL = -1,
@@ -67,4 +68,16 @@ int sceCdStop(void);
 typedef void (*SceCdCallback)(int reason);
 SceCdCallback sceCdCallback(SceCdCallback callback);
 
+int sceCdNop(void);
+int sceCdStStop(void);
+int _sceCdSC(int command, int* value);
+int _sceCdRE(unsigned int lsn, unsigned int sectors, void* buffer, sceCdRMode* mode);
+void _sceCdstm0Cb(unsigned int (*callback)(void*));
+void _sceCdstm1Cb(unsigned int (*callback)(void*));
+
+#define SCECdComplete 2
+#define SCECdStatShellOpen 1
+#define SCECdStatEmg 32
+#define SCECdFuncRead 1
+int sceCdStatus(void);
 #endif

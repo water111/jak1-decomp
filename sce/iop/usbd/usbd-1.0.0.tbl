@@ -1,0 +1,23 @@
+Libname usbd
+Version 1.1
+Flags 0
+
+Entry start # 000
+Entry - # 001
+Entry usb_reboot # 002
+Entry - # 003
+Entry sceUsbdRegisterLdd # 004
+Entry sceUsbdUnregisterLdd # 005
+Entry sceUsbdScanStaticDescriptor # 006
+Entry sceUsbdSetPrivateData # 007
+Entry sceUsbdGetPrivateData # 008
+Entry sceUsbdOpenPipe # 009
+Entry sceUsbdClosePipe # 010
+Entry sceUsbdTransferPipe # 011
+Entry sceUsbdOpenPipeAligned # 012
+Entry sceUsbdGetDeviceLocation # 013
+Entry sceUsbdRegisterAutoloader # 014
+Entry sceUsbdUnregisterAutoloader # 015
+Entry sceUsbdChangeThreadPriority # 016
+Entry sceUsbdGetReportDescriptor # 017
+Entry sceUsbdMultiIsochronousTransfer # 018

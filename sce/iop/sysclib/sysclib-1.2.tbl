@@ -14,7 +14,7 @@ Entry -	# 008
 Entry -	# 009
 Entry -	# 010
 Entry -	# 011
-Entry -	# 012
+Entry memcpy	# 012
 Entry memmove	# 013
 Entry memset	# 014
 Entry -	# 015

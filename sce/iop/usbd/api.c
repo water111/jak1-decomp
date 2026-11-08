@@ -136,7 +136,15 @@ void* sceUsbdScanStaticDescriptor(int device, void* previous, u_char type) {
   void* result;
   USB_SAVE_GP(saved_gp);
   if (!usb_lock()) {
+#if USBD_DRIVER_VERSION >= 0x010000
+    struct UsbDevice* found = usb_get_device(device);
+    if (!found || found->status != 8)
+      result = 0;
+    else
+      result = usb_scan_descriptor(device, previous, type);
+#else
     result = usb_scan_descriptor(device, previous, type);
+#endif
     usb_unlock();
   } else {
     result = 0;
@@ -153,7 +161,11 @@ int sceUsbdGetDeviceLocation(int id, u_char* path) {
   result = USB_ERROR_DEVICE;
   if (!usb_lock()) {
     device = usb_get_device(id);
-    if (device)
+    if (device
+#if USBD_DRIVER_VERSION >= 0x010000
+        && device->status == 8
+#endif
+    )
       result = usb_get_device_location(device, path);
     usb_unlock();
   } else {
@@ -275,20 +287,44 @@ void usb_queue_callback(struct UsbRequest* request) {
   SetEventFlag(usb_callback_event, USB_CALLBACK_READY);
 }
 
+#if USBD_DRIVER_VERSION >= 0x010000
+int usb_transfer_pipe(u_int saved_gp,
+                      int pipe,
+                      void* buffer,
+                      int byte_count,
+                      void* setup,
+                      UsbCallback callback,
+                      void* argument,
+                      void* multi_data) {
+#else
 int sceUsbdTransferPipe(int pipe,
                         void* buffer,
                         int length,
                         void* setup,
                         UsbCallback callback,
                         void* argument) {
+#endif
+#if USBD_DRIVER_VERSION < 0x010000
   u_int saved_gp;
+#endif
   struct UsbEndpoint* endpoint;
   struct UsbRequest* request;
   UsbDeviceRequest* packet = setup;
+#if USBD_DRIVER_VERSION >= 0x010000
+  UsbMultiIsoRequest* multi = multi_data;
+  // Preserve the saved registers used by the shared transfer entry point.
+  register int length asm("$17") = byte_count;
+  register int result asm("$16");
+#else
   int result;
+#endif
+#if USBD_DRIVER_VERSION < 0x010000
   USB_SAVE_GP(saved_gp);
+#endif
   if (usb_lock()) {
+#if USBD_DRIVER_VERSION < 0x010000
     USB_RESTORE_GP(saved_gp);
+#endif
     return USB_ERROR_LOCK;
   }
   endpoint = usb_get_endpoint(pipe);
@@ -296,23 +332,70 @@ int sceUsbdTransferPipe(int pipe,
     result = USB_ERROR_PIPE;
     goto done;
   }
-  if (buffer && length > 0) {
+#if USBD_DRIVER_VERSION >= 0x010000
+  if (multi) {
+    int i;
+    int count = multi->packet_count;
+    buffer = multi->buffer;
+    length = 0;
+    if ((u_int)(count - 1) >= USB_ISO_MAX_PACKETS || !buffer)
+      goto invalid_length;
+    if (endpoint->alignment && ((u_int)buffer & 3))
+      goto bad_alignment;
+    if (endpoint->schedule_index != USB_SCHEDULE_ISOCHRONOUS) {
+      result = USB_ERROR_PIPE;
+      goto done;
+    }
+    i = 0;
+    while (i < count) {
+      if ((multi->packets[i] & 0x7ff) > (((u_short*)&endpoint->descriptor->control)[1] & 0x7ff))
+        goto invalid_length;
+      length += multi->packets[i] & 0x7ff;
+      if (endpoint->alignment && (((u_int)buffer + length) & 3))
+        goto bad_alignment;
+      ++i;
+    }
+    {
+      u_int start_page = (u_int)buffer >> 12;
+      if ((((u_int)buffer + length - 1) >> 12) - start_page >= 2) {
+      invalid_length:
+        // Keep validation failures separate from errors after allocating a request.
+        asm("");
+        result = USB_ERROR_LENGTH;
+        goto done;
+      }
+    }
+  } else
+#endif
+      if (buffer && length > 0) {
     u_int start_page = (u_int)buffer >> 12;
     if ((((u_int)buffer + length - 1) >> 12) - start_page >= 2)
+#if USBD_DRIVER_VERSION >= 0x010000
+      goto invalid_length;
+#else
       goto bad_length;
+#endif
     if (endpoint->alignment && ((u_int)buffer & 3))
       goto bad_alignment;
     if (endpoint->schedule_index == USB_SCHEDULE_CONTROL && ((u_int)buffer & 3) &&
         !(packet->request_type & 0x80)) {
       if ((((u_short*)&endpoint->descriptor->control)[1] & 0x7ff) == 64 && length >= 63) {
+#if USBD_DRIVER_VERSION >= 0x010000
+        goto bad_alignment;
+#else
       bad_alignment:
         result = USB_ERROR_ALIGNMENT;
         goto done;
+#endif
       }
     }
     if (endpoint->schedule_index == USB_SCHEDULE_ISOCHRONOUS &&
         (u_int)length > (((u_short*)&endpoint->descriptor->control)[1] & 0x7ff))
+#if USBD_DRIVER_VERSION >= 0x010000
+      goto invalid_length;
+#else
       goto bad_length;
+#endif
   }
   request = usb_alloc_request();
   if (!request) {
@@ -322,6 +405,9 @@ int sceUsbdTransferPipe(int pipe,
   request->callback_argument = argument;
   request->user_callback = callback;
   request->callback_gp = saved_gp;
+#if USBD_DRIVER_VERSION >= 0x010000
+  request->multi_iso.packet_count = 0;
+#endif
   switch (endpoint->schedule_index) {
     case USB_SCHEDULE_CONTROL:
       if (!packet) {
@@ -331,7 +417,9 @@ int sceUsbdTransferPipe(int pipe,
       }
       if (packet->length != length) {
         usb_free_request(request);
+#if USBD_DRIVER_VERSION < 0x010000
       bad_length:
+#endif
         result = USB_ERROR_LENGTH;
         goto done;
       }
@@ -340,17 +428,61 @@ int sceUsbdTransferPipe(int pipe,
                                   usb_queue_callback);
       break;
     case USB_SCHEDULE_ISOCHRONOUS:
+#if USBD_DRIVER_VERSION >= 0x010000
+      if (!multi)
+        goto single_iso;
+      request->wait_frames = multi->wait_frames;
+      request->multi_iso = *multi;
+      goto submit_data;
+    bad_alignment:
+      result = USB_ERROR_ALIGNMENT;
+      goto done;
+    single_iso:
       request->wait_frames = (u_int)packet;
+#else
+      request->wait_frames = (u_int)packet;
+#endif
     case USB_SCHEDULE_BULK:
     default:
+    submit_data:
       result = usb_submit_data(endpoint, request, buffer, length, usb_queue_callback);
       break;
   }
 done:
   usb_unlock();
+#if USBD_DRIVER_VERSION < 0x010000
+  USB_RESTORE_GP(saved_gp);
+#endif
+  return result;
+}
+
+#if USBD_DRIVER_VERSION >= 0x010000
+int sceUsbdTransferPipe(int pipe,
+                        void* buffer,
+                        int length,
+                        void* setup,
+                        UsbCallback callback,
+                        void* argument) {
+  u_int saved_gp;
+  int result;
+  USB_SAVE_GP(saved_gp);
+  result = usb_transfer_pipe(saved_gp, pipe, buffer, length, setup, callback, argument, 0);
   USB_RESTORE_GP(saved_gp);
   return result;
 }
+
+int sceUsbdMultiIsochronousTransfer(int pipe,
+                                    UsbMultiIsoRequest* multi,
+                                    UsbMultiIsoCallback callback,
+                                    void* argument) {
+  u_int saved_gp;
+  int result;
+  USB_SAVE_GP(saved_gp);
+  result = usb_transfer_pipe(saved_gp, pipe, 0, 0, 0, (UsbCallback)callback, argument, multi);
+  USB_RESTORE_GP(saved_gp);
+  return result;
+}
+#endif
 
 int sceUsbdChangeThreadPriority(int event_priority, int callback_priority) {
   u_int saved_gp;
@@ -371,6 +503,40 @@ done:
   USB_RESTORE_GP(saved_gp);
   return result;
 }
+
+#if USBD_DRIVER_VERSION >= 0x010000
+#define USB_ERROR_REPORT_DESCRIPTOR 306
+
+int sceUsbdGetReportDescriptor(int id, int configuration, int interface, void** data, int* size) {
+  u_int saved_gp;
+  struct UsbDevice* device;
+  struct UsbReportDescriptor* report;
+  int result;
+  USB_SAVE_GP(saved_gp);
+  result = USB_ERROR_REPORT_DESCRIPTOR;
+  if (!usb_lock()) {
+    device = usb_get_device(id);
+    if (device) {
+      for (report = device->reports; report; report = report->next) {
+        if (report->configuration == configuration && report->interface == interface) {
+          if (data)
+            *data = report->data;
+          if (size)
+            *size = report->length;
+          result = 0;
+          goto report_done;
+        }
+      }
+    } else
+      result = USB_ERROR_DEVICE;
+  report_done:
+    usb_unlock();
+  } else
+    result = USB_ERROR_LOCK;
+  USB_RESTORE_GP(saved_gp);
+  return result;
+}
+#endif
 
 int usb_interrupt_callback(void* argument) {
   struct UsbInterruptContext* context = argument;
@@ -423,14 +589,47 @@ void usb_callback_worker(void* argument) {
       usb_lock();
       usb_free_request(request);
       usb_unlock();
-      if (copy.user_callback) {
-        USB_RESTORE_GP(copy.callback_gp);
-        copy.user_callback(copy.result, copy.transferred, copy.callback_argument);
-        __asm__ volatile("la $gp,_gp");
+      {
+        UsbCallback callback = copy.user_callback;
+#if USBD_DRIVER_VERSION >= 0x010000
+        register UsbCallback single_callback asm("$7") = callback;
+#endif
+        if (callback) {
+#if USBD_DRIVER_VERSION >= 0x010000
+          // The two callback signatures use separate copies of the function pointer.
+          asm("" : "+r"(single_callback) : "r"(callback));
+          if (copy.multi_iso.packet_count) {
+            USB_RESTORE_GP(copy.callback_gp);
+            ((UsbMultiIsoCallback)copy.user_callback)(copy.result, &copy.multi_iso,
+                                                      copy.callback_argument);
+            __asm__ volatile("la $gp,_gp");
+          } else {
+#endif
+            USB_RESTORE_GP(copy.callback_gp);
+#if USBD_DRIVER_VERSION >= 0x010000
+            single_callback(copy.result, copy.transferred, copy.callback_argument);
+#else
+          callback(copy.result, copy.transferred, copy.callback_argument);
+#endif
+            __asm__ volatile("la $gp,_gp");
+#if USBD_DRIVER_VERSION >= 0x010000
+          }
+#endif
+        }
       }
     }
   }
 }
+
+#if USBD_DRIVER_VERSION >= 0x010000
+void usb_reboot(int phase) {
+  u_int saved_gp;
+  USB_SAVE_GP(saved_gp);
+  if ((u_int)phase < 2)
+    usb_reset_root_ports();
+  USB_RESTORE_GP(saved_gp);
+}
+#endif
 
 void usb_parse_option(struct UsbOption* option, const char* text) {
   int value = 0;
@@ -474,6 +673,10 @@ int start(int argc, char** argv) {
   struct ThreadParam thread;
   struct SemaParam semaphore;
   int old_interrupt;
+#if USBD_DRIVER_VERSION >= 0x010000
+  if (argc < 0)
+    return usb_shutdown();
+#endif
   --argc;
   ++argv;
   while (argc > 0) {
@@ -539,7 +742,11 @@ int start(int argc, char** argv) {
   if (usb_initialize() < 0)
     goto fail;
   EnableIntr(USB_IOP_INTERRUPT);
+#if USBD_DRIVER_VERSION >= 0x010000
+  return 2;
+#else
   return 0;
+#endif
 fail:
   if (usb_callback_thread > 0)
     DeleteThread(usb_callback_thread);
@@ -554,5 +761,25 @@ fail:
   ReleaseIntrHandler(USB_IOP_INTERRUPT);
   return 1;
 }
+
+#if USBD_DRIVER_VERSION >= 0x010000
+int usb_shutdown(void) {
+  int old_interrupt;
+  if (ReleaseLibraryEntries(usb_exports))
+    return 2;
+  DisableIntr(USB_IOP_INTERRUPT, &old_interrupt);
+  ReleaseIntrHandler(USB_IOP_INTERRUPT);
+  TerminateThread(usb_event_thread);
+  TerminateThread(usb_callback_thread);
+  DeleteThread(usb_event_thread);
+  DeleteThread(usb_callback_thread);
+  DeleteEventFlag(usb_interrupt_event);
+  DeleteEventFlag(usb_callback_event);
+  DeleteSema(usb_api_semaphore);
+  usb_shutdown_controller();
+  usb_shutdown_hubs();
+  return 1;
+}
+#endif
 
 #include "sce/iop/usbd/state.c"

@@ -10,5 +10,6 @@ struct ModuleInfo {
 };
 
 int RegisterLibraryEntries(void* exports);
+int ReleaseLibraryEntries(void* exports);
 
 #endif

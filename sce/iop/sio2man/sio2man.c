@@ -178,7 +178,7 @@ void sio2_setup_transfer(struct Sio2Transfer* transfer) {
   int i;
   for (i = 0; i < 4; i++) {
     sio2_send1_set(i, transfer->send1[i]);
-    sio2_send2_set(i, transfer->send2[i]);
+    sio2_send2_set(i, transfer->send2[i].value);
   }
   for (i = 0; i < 16; i++)
     sio2_send3_set(i, transfer->send3[i]);

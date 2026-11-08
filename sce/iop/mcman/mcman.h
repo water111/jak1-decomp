@@ -1,6 +1,10 @@
 #ifndef SCE_IOP_MCMAN_H
 #define SCE_IOP_MCMAN_H
 
+#ifndef MCMAN_VERSION
+#define MCMAN_VERSION 0x0215
+#endif
+
 #include "sce/iop/loadcore/loadcore.h"
 #include "sce/iop/mcman/types.h"
 

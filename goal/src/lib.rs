@@ -15,5 +15,6 @@ pub mod parse;
 pub mod register_allocator;
 pub mod span;
 pub mod static_data;
+pub mod symbol_table;
 pub mod type_system;
 pub mod value;

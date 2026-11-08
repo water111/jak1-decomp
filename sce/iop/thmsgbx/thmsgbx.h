@@ -1,6 +1,8 @@
 #ifndef SCE_IOP_THMSGBX_H
 #define SCE_IOP_THMSGBX_H
 
+#include "sce/iop/kerror.h"
+
 #include "sce/iop/types.h"
 
 struct MsgPacket {

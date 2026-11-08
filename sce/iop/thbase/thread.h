@@ -57,4 +57,8 @@ int ChangeThreadPriority(int id, int priority);
 
 int SetAlarm(struct SysClock* clock, unsigned int (*callback)(void*), void* argument);
 
+int iSetAlarm(struct SysClock* clock, unsigned int (*callback)(void*), void* argument);
+int CancelAlarm(unsigned int (*callback)(void*), void* argument);
+int iCancelAlarm(unsigned int (*callback)(void*), void* argument);
+
 #endif

@@ -416,6 +416,21 @@ impl Interpreter {
         )
     }
 
+    pub fn compile_macro(
+        &mut self,
+        parameters: Object,
+        body: Vec<Object>,
+        span: Option<SpanInfo>,
+    ) -> Result<Object, Diagnostic> {
+        let mut form = Vec::with_capacity(body.len() + 2);
+        form.push(Object::symbol(self.core.macro_symbol, span));
+        form.push(parameters);
+        form.extend(body);
+        let form = self.build_proper_list(form, span)?;
+        let expanded = self.expand_goos_macros(form, self.goal_environment)?;
+        self.eval_expanded(expanded, self.goal_environment)
+    }
+
     pub fn collect_garbage(
         &mut self,
         additional_roots: &[Object],

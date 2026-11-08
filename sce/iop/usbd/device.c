@@ -1,6 +1,13 @@
+#include "sce/iop/intrman/intrman.h"
+#include "sce/iop/stdio/stdio.h"
+#include "sce/iop/sysmem/sysmem.h"
 #include "sce/iop/usbd/api_gp.h"
 #include "sce/iop/usbd/internal.h"
+#if USBD_DRIVER_VERSION >= 0x010000
+#define USB_DEVICE_READY 8
+#else
 #define USB_DEVICE_READY 7
+#endif
 #define USB_ERROR_DRIVER 260
 #define USB_ERROR_DRIVER_BUSY 289
 #define USB_LOCATION_DEPTH 6
@@ -49,6 +56,83 @@ void usb_set_device_address(void* argument);
 int usb_begin_enumeration(struct UsbDevice* device);
 int usb_disconnect_device(struct UsbDevice* device);
 
+#if USBD_DRIVER_VERSION >= 0x010000
+#define USB_DESCRIPTOR_HID 0x21
+#define USB_DESCRIPTOR_REPORT 0x22
+
+struct UsbHidDescriptor {
+  u_char length, type;
+  u_short version;
+  u_char country, descriptor_count;
+
+  struct {
+    u_char type, length_low, length_high;
+  } descriptors[0];
+};
+
+static __inline__ void usb_collect_hid_reports(struct UsbDevice* device,
+                                               void* descriptor,
+                                               int configuration,
+                                               int interface) {
+  struct UsbHidDescriptor* hid = descriptor;
+  int i, report_length, state;
+  u_char* entry;
+  struct UsbReportDescriptor* report;
+  for (i = 0; i < hid->descriptor_count; ++i) {
+    entry = (u_char*)hid + 6 + i * 3;
+    if (entry[0] == USB_DESCRIPTOR_REPORT) {
+      report_length = entry[1] + (entry[2] << 8);
+      CpuSuspendIntr(&state);
+      report = AllocSysMemory(0, report_length + sizeof(*report), 0);
+      CpuResumeIntr(state);
+      report->configuration = configuration;
+      report->interface = interface;
+      report->length = report_length;
+      report->previous = device->last_report;
+      if (report->previous)
+        report->previous->next = report;
+      else
+        device->reports = report;
+      report->next = 0;
+      device->last_report = report;
+    }
+  }
+}
+
+int usb_collect_report_descriptors(struct UsbDevice* device, u_char* descriptor, u_char* end) {
+  int configuration = 0;
+  int interface = 0;
+  int length, size;
+  device->reports = 0;
+  device->last_report = 0;
+  while (descriptor < end) {
+    length = descriptor[0];
+    if (length < 2 || end - descriptor < length)
+      break;
+    size = length;
+    switch (descriptor[1]) {
+      case USB_DESCRIPTOR_DEVICE:
+      case USB_DESCRIPTOR_STRING:
+      case USB_DESCRIPTOR_ENDPOINT:
+        break;
+      case USB_DESCRIPTOR_CONFIGURATION:
+        if ((size -= 9) >= 0)
+          configuration = descriptor[5];
+        break;
+      case USB_DESCRIPTOR_INTERFACE:
+        if ((size -= 9) >= 0)
+          interface = descriptor[2];
+        break;
+      case USB_DESCRIPTOR_HID:
+        usb_collect_hid_reports(device, descriptor, configuration, interface);
+        break;
+    }
+    descriptor += length;
+  }
+  return 0;
+}
+#endif
+
 int usb_call_driver(int (*callback)(int), int device, u_int gp) {
   int result;
   if (!callback)
@@ -64,7 +148,13 @@ int usb_call_driver(int (*callback)(int), int device, u_int gp) {
 void usb_attach_driver(struct UsbDevice* parent, UsbDriver* driver) {
   struct UsbDevice* device;
   for (device = parent->child_head; device; device = device->next) {
-    if (device->status == USB_DEVICE_READY) {
+    if (
+#if USBD_DRIVER_VERSION >= 0x010000
+        (u_int)(device->status - 7) < 2
+#else
+        device->status == USB_DEVICE_READY
+#endif
+    ) {
       if (device->driver) {
         if (device->child_head)
           usb_attach_driver(device, driver);
@@ -272,6 +362,9 @@ int usb_submit_control(struct UsbEndpoint* endpoint,
 
 void usb_bind_device(struct UsbDevice* device) {
   UsbDriver* driver;
+#if USBD_DRIVER_VERSION >= 0x010000
+  device->status = USB_DEVICE_READY;
+#endif
   for (driver = usb_driver_head; driver; driver = driver->next) {
     if (usb_call_driver(driver->probe, device->id, driver->gp))
       goto found;
@@ -283,6 +376,28 @@ void usb_bind_device(struct UsbDevice* device) {
     usb_call_driver(driver->attach, device->id, driver->gp);
   }
 }
+
+#if USBD_DRIVER_VERSION >= 0x010000
+void usb_read_report_descriptor(struct UsbRequest* request);
+
+void usb_report_descriptor_complete(struct UsbRequest* request) {
+  struct UsbDevice* device = request->endpoint->device;
+  device->current_report = device->current_report->next;
+  if (!device->current_report)
+    usb_bind_device(device);
+  else
+    usb_read_report_descriptor(request);
+}
+
+void usb_read_report_descriptor(struct UsbRequest* request) {
+  struct UsbEndpoint* endpoint = request->endpoint;
+  struct UsbDevice* device = endpoint->device;
+  usb_submit_control(endpoint, &device->enumeration_request, 0x81, USB_REQUEST_GET_DESCRIPTOR,
+                     USB_DESCRIPTOR_REPORT << 8, device->current_report->interface,
+                     device->current_report->length, device->current_report->data,
+                     usb_report_descriptor_complete);
+}
+#endif
 
 void usb_restart_enumeration(struct UsbDevice* device, struct UsbEndpoint* endpoint) {
   usb_close_endpoint(device, endpoint);
@@ -319,8 +434,20 @@ void usb_configuration_complete(struct UsbRequest* request) {
     usb_submit_control(endpoint, &device->enumeration_request, 0x80, USB_REQUEST_GET_DESCRIPTOR,
                        (USB_DESCRIPTOR_CONFIGURATION << 8) | index, 0, length, output,
                        usb_configuration_complete);
-  else
+  else {
+#if USBD_DRIVER_VERSION >= 0x010000
+    device->reports = 0;
+    if (usb_configuration.read_report_descriptors) {
+      usb_collect_report_descriptors(device, device->descriptors, device->descriptor_end);
+      if (device->reports) {
+        device->current_report = device->reports;
+        usb_read_report_descriptor(request);
+        return;
+      }
+    }
+#endif
     usb_bind_device(device);
+  }
 }
 
 void usb_device_descriptor_complete(struct UsbRequest* request) {
@@ -371,7 +498,7 @@ void usb_address_complete(struct UsbRequest* request) {
   } else {
     struct UsbEndpointDescriptor* hardware = endpoint->descriptor;
     hardware->control |= device->address & 0x7f;
-    device->status = USB_DEVICE_READY;
+    device->status = 7;
     usb_add_timer(&device->reset_timer, usb_address_settled, request, 5);
   }
 }
@@ -403,6 +530,28 @@ int usb_disconnect_device(struct UsbDevice* device) {
       usb_cancel_timer(&device->reset_timer);
     while ((endpoint = device->endpoint_head))
       usb_close_endpoint(device, endpoint);
+#if USBD_DRIVER_VERSION >= 0x010000
+    {
+      struct UsbReportDescriptor* report;
+      int state;
+      while ((report = device->reports)) {
+        struct UsbReportDescriptor* previous = report->previous;
+        struct UsbReportDescriptor* next;
+        if (report->next)
+          report->next->previous = previous;
+        else
+          device->last_report = previous;
+        next = report->next;
+        if (report->previous)
+          report->previous->next = next;
+        else
+          device->reports = next;
+        CpuSuspendIntr(&state);
+        FreeSysMemory(report);
+        CpuResumeIntr(state);
+      }
+    }
+#endif
     while ((child = device->child_head)) {
       struct UsbDevice* neighbor;
       struct UsbDevice* link;
@@ -427,3 +576,16 @@ int usb_disconnect_device(struct UsbDevice* device) {
     usb_finish_device_reset(device);
   return 0;
 }
+
+#if USBD_DRIVER_VERSION >= 0x010000
+
+int usb_initialize(void) {
+  printf("USB Driver (%s)", usb_version);
+  printf("\n");
+  if (usb_initialize_controller() < 0)
+    return -1;
+  if (usb_initialize_hubs() < 0)
+    return -1;
+  return 0;
+}
+#endif

@@ -7,7 +7,7 @@ use crate::goal_object::{
 };
 use crate::ir::FunctionId;
 use crate::object::SymbolTable;
-use crate::static_data::{FixupTarget, Segment, StaticData};
+use crate::static_data::{FixupTarget, PoolEntryKind, Segment, StaticData, StaticLabelId};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct ObjectFileOptions {
@@ -35,12 +35,28 @@ struct NamedLink {
     offset: u32,
 }
 
+#[derive(Debug)]
+struct PendingFunctionLink {
+    high_offset: u32,
+    low_offset: u32,
+    target: FunctionId,
+}
+
+#[derive(Debug)]
+struct PendingStaticLink {
+    instruction_offset: u32,
+    function_entry: u32,
+    label: StaticLabelId,
+}
+
 #[derive(Debug, Default)]
 struct ObjectSegment {
     bytes: Vec<u8>,
     pointers: Vec<u32>,
     types: Vec<TypeLink>,
     symbols: Vec<NamedLink>,
+    function_links: Vec<PendingFunctionLink>,
+    static_links: Vec<PendingStaticLink>,
 }
 
 pub fn write_v3(
@@ -71,6 +87,8 @@ pub fn write_v3(
     }) {
         return Err("only the top-level function may use the top-level segment".to_owned());
     }
+
+    let static_data = order_static_pools(functions, static_data)?;
 
     let mut segments: [ObjectSegment; Segment::COUNT] =
         std::array::from_fn(|_| ObjectSegment::default());
@@ -103,6 +121,7 @@ pub fn write_v3(
             &mut entries,
         )?;
     }
+    apply_function_links(&mut segments, &entries)?;
 
     let mut static_bases = [0_u32; Segment::COUNT];
     for segment in Segment::ALL {
@@ -113,7 +132,14 @@ pub fn write_v3(
             .map_err(|_| "object segment exceeds u32".to_owned())?;
         segments[index].bytes.extend_from_slice(section.bytes());
     }
-    apply_static_fixups(&mut segments, static_data, symbols, &static_bases, &entries)?;
+    apply_static_links(&mut segments, &static_data, &static_bases)?;
+    apply_static_fixups(
+        &mut segments,
+        &static_data,
+        symbols,
+        &static_bases,
+        &entries,
+    )?;
 
     let mut output = vec![0; V3_HEADER_SIZE];
     output[V3_NAME_OFFSET..V3_NAME_OFFSET + name.len()].copy_from_slice(name.as_bytes());
@@ -145,6 +171,279 @@ pub fn write_v3(
         align(&mut output, 16);
     }
     Ok(output)
+}
+
+fn order_static_pools(
+    functions: &[OpcodeFunction],
+    source: &StaticData,
+) -> Result<StaticData, String> {
+    if source.pool_entries.is_empty() {
+        return Ok(source.clone());
+    }
+
+    let mut result = StaticData::default();
+    result.labels = source.labels.clone();
+    result.fixups = source.fixups.clone();
+    result.pool_entries = source.pool_entries.clone();
+
+    for segment in Segment::ALL {
+        let entries = source
+            .pool_entries
+            .iter()
+            .enumerate()
+            .filter_map(|(index, entry)| (entry.segment == segment).then_some(index))
+            .collect::<Vec<_>>();
+        if entries.is_empty() {
+            let section = source.section(segment);
+            result
+                .section_mut(segment)
+                .append(section.bytes(), section.alignment())?;
+            continue;
+        }
+
+        let mut coverage = vec![false; source.section(segment).len()];
+        for &index in &entries {
+            let entry = source.pool_entries[index];
+            coverage[entry.start as usize..entry.end as usize].fill(true);
+        }
+        let covered = |offset: u32| coverage.get(offset as usize).copied().unwrap_or(false);
+        let can_reorder = source
+            .labels
+            .iter()
+            .all(|label| label.segment != segment || covered(label.offset))
+            && source
+                .fixups
+                .iter()
+                .all(|fixup| fixup.segment != segment || covered(fixup.offset))
+            && source
+                .section(segment)
+                .bytes()
+                .iter()
+                .enumerate()
+                .all(|(offset, byte)| *byte == 0 || covered(offset as u32));
+        if !can_reorder {
+            let section = source.section(segment);
+            result
+                .section_mut(segment)
+                .append(section.bytes(), section.alignment())?;
+            continue;
+        }
+
+        let entry_for_label = entries
+            .iter()
+            .map(|index| (source.pool_entries[*index].label, *index))
+            .collect::<HashMap<_, _>>();
+        let mut strings = Vec::new();
+        let mut string_seen = vec![false; source.pool_entries.len()];
+        for function in functions
+            .iter()
+            .filter(|function| function.segment == segment)
+        {
+            for link in &function.static_links {
+                if let Some(&index) = entry_for_label.get(&link.label)
+                    && source.pool_entries[index].kind == PoolEntryKind::String
+                    && !string_seen[index]
+                {
+                    string_seen[index] = true;
+                    strings.push(index);
+                }
+            }
+        }
+        for &index in &entries {
+            if source.pool_entries[index].kind == PoolEntryKind::String && !string_seen[index] {
+                string_seen[index] = true;
+                strings.push(index);
+            }
+        }
+        strings.reverse();
+
+        let mut float_values = Vec::new();
+        let mut collect_float_values = |function: &OpcodeFunction| {
+            for link in function.static_links.iter().rev() {
+                if let Some(&index) = entry_for_label.get(&link.label)
+                    && let PoolEntryKind::Float(bits) = source.pool_entries[index].kind
+                {
+                    float_values.push(bits);
+                }
+            }
+        };
+        if segment == Segment::TopLevel {
+            for function in functions
+                .iter()
+                .filter(|function| function.segment == segment)
+            {
+                collect_float_values(function);
+            }
+        } else {
+            for function in functions
+                .iter()
+                .rev()
+                .filter(|function| function.segment == segment)
+            {
+                collect_float_values(function);
+            }
+        }
+        let float_entries = entries
+            .iter()
+            .filter_map(|index| match source.pool_entries[*index].kind {
+                PoolEntryKind::Float(bits) => Some((bits, *index)),
+                _ => None,
+            })
+            .collect::<HashMap<_, _>>();
+        let mut floats = historical_value_order(float_values, float_hash)
+            .into_iter()
+            .filter_map(|bits| float_entries.get(&bits).copied())
+            .collect::<Vec<_>>();
+        let mut float_seen = vec![false; source.pool_entries.len()];
+        for &index in &floats {
+            float_seen[index] = true;
+        }
+        for &index in &entries {
+            if matches!(source.pool_entries[index].kind, PoolEntryKind::Float(_))
+                && !float_seen[index]
+            {
+                float_seen[index] = true;
+                floats.push(index);
+            }
+        }
+
+        let mut integer_values = Vec::new();
+        for function in functions
+            .iter()
+            .filter(|function| function.segment == segment)
+        {
+            for link in &function.static_links {
+                if let Some(&index) = entry_for_label.get(&link.label)
+                    && let PoolEntryKind::Integer(bits) = source.pool_entries[index].kind
+                {
+                    integer_values.push(bits);
+                }
+            }
+        }
+        let integer_entries = entries
+            .iter()
+            .filter_map(|index| match source.pool_entries[*index].kind {
+                PoolEntryKind::Integer(bits) => Some((bits, *index)),
+                _ => None,
+            })
+            .collect::<HashMap<_, _>>();
+        let mut integers = historical_value_order(integer_values, integer_hash)
+            .into_iter()
+            .filter_map(|bits| integer_entries.get(&bits).copied())
+            .collect::<Vec<_>>();
+        let mut integer_seen = vec![false; source.pool_entries.len()];
+        for &index in &integers {
+            integer_seen[index] = true;
+        }
+        for &index in &entries {
+            if matches!(source.pool_entries[index].kind, PoolEntryKind::Integer(_))
+                && !integer_seen[index]
+            {
+                integer_seen[index] = true;
+                integers.push(index);
+            }
+        }
+
+        for index in strings.into_iter().chain(floats).chain(integers) {
+            let entry = source.pool_entries[index];
+            let bytes = source
+                .section(segment)
+                .bytes()
+                .get(entry.start as usize..entry.end as usize)
+                .ok_or_else(|| "static pool entry is outside its section".to_owned())?;
+            let new_start = result.section_mut(segment).append(bytes, entry.alignment)?;
+            let label = source.labels[entry.label.0 as usize];
+            result.labels[entry.label.0 as usize].offset = new_start
+                .checked_add(label.offset - entry.start)
+                .ok_or_else(|| "static pool label offset overflow".to_owned())?;
+            for (new_fixup, old_fixup) in result.fixups.iter_mut().zip(&source.fixups) {
+                if old_fixup.segment == segment
+                    && (entry.start..entry.end).contains(&old_fixup.offset)
+                {
+                    new_fixup.offset = new_start
+                        .checked_add(old_fixup.offset - entry.start)
+                        .ok_or_else(|| "static pool fixup offset overflow".to_owned())?;
+                }
+            }
+            result.pool_entries[index].start = new_start;
+            result.pool_entries[index].end = new_start + (entry.end - entry.start);
+        }
+    }
+    Ok(result)
+}
+
+fn integer_hash(bits: u64) -> u16 {
+    let value = bits as i64;
+    if (-(1 << 29)..(1 << 29)).contains(&value) {
+        ((value << 4) + (value >> 7)) as u16
+    } else {
+        let low = bits as u32;
+        let high = (bits >> 32) as u32;
+        ((low << 3) ^ (low >> 23) ^ (high << 9)) as u16
+    }
+}
+
+fn float_hash(bits: u32) -> u16 {
+    (bits ^ ((bits >> 23) & 255) ^ (bits >> 31)) as u16
+}
+
+fn historical_value_order<T: Copy + Eq>(
+    values: impl IntoIterator<Item = T>,
+    hash: fn(T) -> u16,
+) -> Vec<T> {
+    let mut table = ValueTable::new(hash);
+    for value in values {
+        table.insert(value);
+    }
+    table.buckets.into_iter().rev().flatten().collect()
+}
+
+struct ValueTable<T> {
+    buckets: Vec<Option<T>>,
+    limit: usize,
+    count: usize,
+    hash: fn(T) -> u16,
+}
+
+impl<T: Copy + Eq> ValueTable<T> {
+    fn new(hash: fn(T) -> u16) -> Self {
+        Self {
+            buckets: vec![None; 103],
+            limit: 66,
+            count: 0,
+            hash,
+        }
+    }
+
+    fn slot(&self, value: T) -> usize {
+        let mut slot = usize::from((self.hash)(value)) % self.buckets.len();
+        while self.buckets[slot].is_some_and(|old| old != value) {
+            slot = (slot + 1) % self.buckets.len();
+        }
+        slot
+    }
+
+    fn insert(&mut self, value: T) {
+        if self.count == self.limit {
+            let mut size = (self.buckets.len() as f32 * 1.2) as usize | 1;
+            for divisor in [3, 5, 7] {
+                if size.is_multiple_of(divisor) {
+                    size += divisor - 1;
+                }
+            }
+            self.limit = (self.limit * size).div_ceil(self.buckets.len());
+            let old = std::mem::replace(&mut self.buckets, vec![None; size]);
+            for old_value in old.into_iter().flatten() {
+                let slot = self.slot(old_value);
+                self.buckets[slot] = Some(old_value);
+            }
+        }
+        let slot = self.slot(value);
+        if self.buckets[slot].is_none() {
+            self.buckets[slot] = Some(value);
+            self.count += 1;
+        }
+    }
 }
 
 fn append_function(
@@ -180,15 +479,131 @@ fn append_function(
         validate_name(name, "symbol")?;
         let offset = entry
             .checked_add(link.offset)
-            .ok_or_else(|| "function link offset overflow".to_owned())?;
+            .ok_or_else(|| "symbol link offset overflow".to_owned())?;
         patch_symbol_addend(&mut segment.bytes, offset, link.addend)?;
         segment.symbols.push(NamedLink {
             name: name.to_owned(),
             offset,
         });
     }
+    for link in &function.function_links {
+        segment.function_links.push(PendingFunctionLink {
+            high_offset: entry
+                .checked_add(link.high_offset)
+                .ok_or_else(|| "function link offset overflow".to_owned())?,
+            low_offset: entry
+                .checked_add(link.low_offset)
+                .ok_or_else(|| "function link offset overflow".to_owned())?,
+            target: link.target,
+        });
+    }
+    for link in &function.static_links {
+        segment.static_links.push(PendingStaticLink {
+            instruction_offset: entry
+                .checked_add(link.offset)
+                .ok_or_else(|| "static link offset overflow".to_owned())?,
+            function_entry: entry,
+            label: link.label,
+        });
+    }
     push_word(&mut segment.bytes, 0);
     push_word(&mut segment.bytes, 0);
+    Ok(())
+}
+
+fn apply_static_links(
+    segments: &mut [ObjectSegment; Segment::COUNT],
+    static_data: &StaticData,
+    static_bases: &[u32; Segment::COUNT],
+) -> Result<(), String> {
+    for source_segment in Segment::ALL {
+        let links = std::mem::take(&mut segments[source_segment.index()].static_links);
+        for link in links {
+            let label = static_data
+                .labels
+                .get(link.label.0 as usize)
+                .ok_or_else(|| "static link refers to an unknown label".to_owned())?;
+            if label.segment != source_segment {
+                return Err("an FP-relative static link cannot cross object segments".to_owned());
+            }
+            let target = static_bases[source_segment.index()]
+                .checked_add(label.offset)
+                .ok_or_else(|| "static link target overflow".to_owned())?;
+            let displacement = i64::from(target) - i64::from(link.function_entry);
+            let displacement = i16::try_from(displacement)
+                .map_err(|_| "FP-relative static link exceeds the 16-bit range".to_owned())?;
+            let word = read_word(
+                &segments[source_segment.index()].bytes,
+                link.instruction_offset,
+            )?;
+            write_word(
+                &mut segments[source_segment.index()].bytes,
+                link.instruction_offset,
+                (word & 0xffff_0000) | u32::from(displacement as u16),
+            )?;
+        }
+    }
+    Ok(())
+}
+
+fn apply_function_links(
+    segments: &mut [ObjectSegment; Segment::COUNT],
+    entries: &HashMap<FunctionId, (Segment, u32)>,
+) -> Result<(), String> {
+    for source_segment in Segment::ALL {
+        let links = std::mem::take(&mut segments[source_segment.index()].function_links);
+        for link in links {
+            let &(target_segment, target) = entries.get(&link.target).ok_or_else(|| {
+                format!(
+                    "function link refers to function {} with no code",
+                    link.target.0
+                )
+            })?;
+            add_split_pointer(
+                &mut segments[source_segment.index()],
+                link.high_offset,
+                link.low_offset,
+                target_segment,
+                target,
+            )?;
+        }
+    }
+    Ok(())
+}
+
+fn add_split_pointer(
+    segment: &mut ObjectSegment,
+    high_offset: u32,
+    low_offset: u32,
+    target_segment: Segment,
+    target: u32,
+) -> Result<(), String> {
+    let distance = low_offset
+        .checked_sub(high_offset)
+        .filter(|distance| distance.is_multiple_of(4))
+        .map(|distance| distance / 4)
+        .ok_or_else(|| "split pointer words are out of order or unaligned".to_owned())?;
+    if !(1..=15).contains(&distance) {
+        return Err("split pointer words must be between one and fifteen words apart".to_owned());
+    }
+    if target >= 1 << 24 {
+        return Err("function pointer target exceeds the V3 split-pointer range".to_owned());
+    }
+    let high = read_word(&segment.bytes, high_offset)?;
+    let low = read_word(&segment.bytes, low_offset)?;
+    let marker =
+        (distance << 12) | ((target_segment.index() as u32) << 8) | ((target >> 16) & 0xff);
+    write_word(
+        &mut segment.bytes,
+        high_offset,
+        (high & 0xffff_0000) | marker,
+    )?;
+    write_word(
+        &mut segment.bytes,
+        low_offset,
+        (low & 0xffff_0000) | (target & 0xffff),
+    )?;
+    segment.pointers.push(high_offset);
     Ok(())
 }
 
@@ -243,6 +658,22 @@ fn apply_static_fixups(
                     .checked_add_signed(fixup.addend)
                     .ok_or_else(|| "function pointer target overflow".to_owned())?;
                 add_pointer(segments, source_segment, source, target_segment, target)?;
+            }
+            FixupTarget::Type { name, methods } => {
+                let name = symbols
+                    .resolve(name)
+                    .ok_or_else(|| format!("unknown type symbol ID {:#x}", name.0))?;
+                validate_name(name, "type")?;
+                write_word(
+                    &mut segments[source_segment.index()].bytes,
+                    source,
+                    u32::MAX,
+                )?;
+                segments[source_segment.index()].types.push(TypeLink {
+                    name: name.to_owned(),
+                    methods,
+                    offset: source,
+                });
             }
         }
     }
@@ -473,19 +904,25 @@ mod tests {
     use crate::codegen::generate_file;
     use crate::frontend::{FileContext, Frontend};
     use crate::goal_object::{Link, Location};
-    use crate::parse::Parser;
+    use crate::goos::Interpreter;
     use crate::static_data::StaticFixup;
     use crate::type_system::{TypeSystem, Visibility};
 
     use super::*;
 
     fn empty_file(name: &str) -> FileContext {
-        let mut parser = Parser::default();
-        let parsed = parser.parse(name, "").unwrap();
+        let mut goos = Interpreter::new().unwrap();
+        let parsed = goos.parser.parse(name, "").unwrap();
         let mut types = TypeSystem::new();
-        let none = types.intern_type_spec("none");
-        Frontend::new(none)
-            .compile_file(0, parsed.source_id, Visibility::new(0, []), &parsed.objects)
+        Frontend::new(&mut types)
+            .compile_file(
+                0,
+                parsed.source_id,
+                Visibility::new(0, []),
+                &mut types,
+                &mut goos,
+                &parsed.objects,
+            )
             .unwrap()
     }
 

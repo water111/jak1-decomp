@@ -1,6 +1,8 @@
 #ifndef _INTRMAN_H
 #define _INTRMAN_H
 
+#include "sce/iop/kerror.h"
+
 // Interrupt manager
 
 #define IOP_IRQ_SIO2 17

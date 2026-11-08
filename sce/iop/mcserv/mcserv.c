@@ -14,13 +14,34 @@
 #define DEFAULT_PRIORITY 104
 #define INVALID_PRIORITY (-403)
 
+#ifndef MCSERV_VERSION
+#define MCSERV_VERSION 0x020c
+#endif
+
+#if MCSERV_VERSION == 0x020c
 char mcserv_build_id[16] = "PsIImcserv  2210";
-struct ModuleInfo Module = {"mcserv", 0x020c};
+#elif MCSERV_VERSION == 0x020f
+char mcserv_build_id[16] = "PsIImcserv  2430";
+#else
+char mcserv_build_id[16] = "PsIImcserv  2710";
+#endif
+struct ModuleInfo Module = {"mcserv", MCSERV_VERSION};
 
 static int mcserv_result[3];
 static unsigned char mcserv_buf[MCSERV_BUFSIZE];
+#if MCSERV_VERSION >= 0x020f
+static unsigned char mcserv_request[1048];
+static unsigned char mcserv_reserved[16];
+#else
 static unsigned char mcserv_request[1044];
+#endif
 static int mcserv_thread_id;
+#if MCSERV_VERSION >= 0x020f
+static sceSifQueueData queue;
+static sceSifServeData server;
+static int mcserv_busy;
+static int mcserv_stop(int mode);
+#endif
 
 extern int mcserv_stub[];
 static void mcserv_thread(void);
@@ -42,14 +63,26 @@ static int _McFlush(void* request);
 static int _McSetFileInfo(void* request);
 static int _McCheckBlock(void* request);
 
+#if MCSERV_VERSION >= 0x0210
+void mcserv_debug_printf(const char* format, ...) {
+  // does nothing.
+}
+#endif
+
 int start(int argc, char** argv) {
   struct ThreadParam param;
   int priority;
   int i;
   int thread;
+#if MCSERV_VERSION >= 0x020f
+  if (argc < 0)
+    return mcserv_stop(-argc);
+#endif
   if (RegisterLibraryEntries(mcserv_stub))
     return 1;
+#if MCSERV_VERSION < 0x0210
   CpuEnableIntr();
+#endif
   priority = DEFAULT_PRIORITY;
   for (i = 0; i < argc; i++) {
     if (!strncmp("thpri=", argv[i], 6)) {
@@ -68,8 +101,34 @@ int start(int argc, char** argv) {
   thread = CreateThread(&param);
   mcserv_thread_id = thread;
   StartThread(thread, 0);
+#if MCSERV_VERSION >= 0x020f
+  return 2;
+#else
   return 0;
+#endif
 }
+
+#if MCSERV_VERSION >= 0x020f
+#define LIBRARY_NOT_FOUND (-213)
+
+static int mcserv_stop(int mode) {
+  int intr_state;
+  int result;
+  if (mcserv_busy)
+    return 2;
+  CpuSuspendIntr(&intr_state);
+  result = ReleaseLibraryEntries(mcserv_stub);
+  CpuResumeIntr(intr_state);
+  if (result == 0 || result == LIBRARY_NOT_FOUND) {
+    TerminateThread(mcserv_thread_id);
+    DeleteThread(mcserv_thread_id);
+    sceSifRemoveRpc(&server, &queue);
+    sceSifRemoveRpcQueue(&queue);
+    return 1;
+  }
+  return 2;
+}
+#endif
 
 int mcserv_change_priority(int priority) {
   struct ThreadInfo info;
@@ -88,9 +147,13 @@ int mcserv_change_priority(int priority) {
 }
 
 static void mcserv_thread(void) {
+#if MCSERV_VERSION < 0x020f
   sceSifQueueData queue;
   sceSifServeData server;
   WaitSema(McGetSemaphore());
+#elif MCSERV_VERSION >= 0x0210
+  memset(mcserv_reserved, 0, sizeof(mcserv_reserved));
+#endif
   if (!sceSifCheckInit())
     sceSifInit();
   sceSifInitRpc(0);
@@ -103,6 +166,10 @@ static int mcserv_set_priority(void* request);
 static int mcserv_set_sio2_mode(void* request);
 
 static void* mcserv_dispatch(unsigned int command, void* request, int size) {
+#if MCSERV_VERSION >= 0x020f
+  WaitSema(McGetSemaphore());
+  mcserv_busy = 1;
+#endif
   switch (command) {
     case MCSERV_CMD_INIT:
       mcserv_result[0] = _McInit(mcserv_request);
@@ -163,6 +230,9 @@ static void* mcserv_dispatch(unsigned int command, void* request, int size) {
   }
   McReplaceBadBlock();
   SignalSema(McGetSemaphore());
+#if MCSERV_VERSION >= 0x020f
+  mcserv_busy = 0;
+#endif
   return mcserv_result;
 }
 
@@ -369,6 +439,10 @@ static int _McGetDir(void* rpc_buf) {
   status = 0;
   flags = nP->flags;
 
+#if MCSERV_VERSION >= 0x020f
+  if (nP->maxent < 0)
+    return McGetDir(nP->port, nP->slot, nP->name, flags & 0xffff, -1, 0);
+#endif
   nP->maxent--;
 
   while (nP->maxent != -1) {

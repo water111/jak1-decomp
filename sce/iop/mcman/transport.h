@@ -15,8 +15,12 @@ int mcman_fillbackupblock1(int port, int slot, int block, void** pages, void* ec
 struct Sio2Transfer;
 void mcman_begin_transfer(int port, int slot);
 void mcman_end_transfer(void);
+void mcman_shutdownPS2com(void);
+int mcman_shutdownPS1com(void);
 int mcman_security_command(int port, int slot, struct Sio2Transfer* packet);
 int mcman_getcnum(int port, int slot);
+int mcman_read_page_fast(int port, int slot, int page);
+int mcman_get_probe_status(void);
 void mcman_build_command(int port, int slot, int command, void* argument);
 
 int mcman_cardchanged(int port, int slot);

@@ -127,7 +127,14 @@ struct Group {
     first: usize,
 }
 
-fn relocate(data: &mut [u8], rels: &[u8], symbols: &[Symbol], address: u32) -> Result<Vec<u8>> {
+fn relocate(
+    data: &mut [u8],
+    rels: &[u8],
+    symbols: &[Symbol],
+    address: u32,
+    input_gp: u32,
+    gp: u32,
+) -> Result<Vec<u8>> {
     if !rels.len().is_multiple_of(8) {
         return Err("Invalid relocation table size".into());
     }
@@ -163,11 +170,13 @@ fn relocate(data: &mut [u8], rels: &[u8], symbols: &[Symbol], address: u32) -> R
                 (word & 0xfc000000) | (addend.wrapping_add(sym.value) >> 2 & 0x03ffffff)
             }
             5 => {
-                // Sony expects adjacent HI16/LO16 relocations for the same symbol.
-                if u32_at(rels, at + 12)? != (info & !255) | 6 {
-                    return Err("R_MIPS_HI16 without matching R_MIPS_LO16".into());
-                }
-                let low_offset = u32_at(rels, at + 8)?;
+                // A low half may resolve several earlier high halves when the
+                // compiler shares address calculations across branches.
+                let low_at = ((at + 8)..rels.len())
+                    .step_by(8)
+                    .find(|&next| u32_at(rels, next + 4).ok() == Some((info & !255) | 6))
+                    .ok_or("R_MIPS_HI16 without matching R_MIPS_LO16")?;
+                let low_offset = u32_at(rels, low_at)?;
                 if low_offset & 3 != 0 {
                     return Err("Unaligned LO16 relocation".into());
                 }
@@ -175,23 +184,38 @@ fn relocate(data: &mut [u8], rels: &[u8], symbols: &[Symbol], address: u32) -> R
                 let full = (word << 16)
                     .wrapping_add(low as i16 as i32 as u32)
                     .wrapping_add(sym.value);
+                (word & 0xffff0000) | (full.wrapping_add(0x8000) >> 16)
+            }
+            6 => {
+                // Split address loads can reuse one HI16 for several LO16 uses.
+                // Resolve each low half once, after its pending high halves.
+                (word & 0xffff0000) | (word.wrapping_add(sym.value) & 0xffff)
+            }
+            7 => {
+                // GP-relative addresses move with the module, so resolve them now and
+                // omit the relocation from the IRX. Local addends include the input GP.
+                let addend = word as i16 as i32 as u32;
+                let input_base = if sym.info >> 4 == 0 { input_gp } else { 0 };
+                let displacement = addend
+                    .wrapping_add(sym.value)
+                    .wrapping_add(input_base)
+                    .wrapping_sub(gp) as i32;
+                if displacement < i16::MIN as i32 || displacement > i16::MAX as i32 {
+                    return Err("GP-relative relocation out of range".into());
+                }
                 put32(
                     data,
-                    low_offset as usize,
-                    (low & 0xffff0000) | (full & 0xffff),
+                    offset as usize,
+                    (word & 0xffff0000) | (displacement as u32 & 0xffff),
                 );
-                (word & 0xffff0000) | (full.wrapping_add(0x8000) >> 16)
+                at += 8;
+                continue;
             }
             _ => return Err(format!("Unsupported MIPS relocation type {kind}")),
         };
         put32(data, offset as usize, value);
         output.extend_from_slice(&offset.wrapping_add(address).to_le_bytes());
         output.extend_from_slice(&kind.to_le_bytes()); // IRX relocations use symbol zero.
-        if kind == 5 {
-            output.extend_from_slice(&u32_at(rels, at + 8)?.wrapping_add(address).to_le_bytes());
-            output.extend_from_slice(&6u32.to_le_bytes());
-            at += 8;
-        }
         at += 8;
     }
     Ok(output)
@@ -248,6 +272,12 @@ fn convert(input: &[u8], entry_name: &str, strip: StripMode) -> Result<Vec<u8>> 
     if sections.first().is_none_or(|s| s.h != [0; 10]) {
         return Err("Invalid null section".into());
     }
+    let input_gp = sections
+        .iter()
+        .find(|s| s.name == ".reginfo")
+        .map(|s| u32_at(&s.data, 20))
+        .transpose()?
+        .unwrap_or(0);
     let symtab = sections
         .iter()
         .position(|s| s.h[1] == 2)
@@ -414,7 +444,7 @@ fn convert(input: &[u8], entry_name: &str, strip: StripMode) -> Result<Vec<u8>> 
         if s.h[2] & 2 == 0 {
             return Err("Relocations in non-allocated section are unsupported".into());
         }
-        let rels = relocate(&mut s.data, &rels, &symbols, s.h[3])?;
+        let rels = relocate(&mut s.data, &rels, &symbols, s.h[3], input_gp, gp)?;
         sections[i].replace_data(rels);
     }
     let entry = symbols
@@ -665,5 +695,102 @@ fn main() {
     if let Err(error) = run() {
         eprintln!("iopfixup: {error}");
         std::process::exit(1);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn split_address_loads_relocate_additional_low_halves() {
+        let mut data = [0x3c03_0000u32, 0x8c62_fff0, 0xac70_fff8]
+            .into_iter()
+            .flat_map(u32::to_le_bytes)
+            .collect::<Vec<_>>();
+        let rels = [0u32, 5, 4, 6, 8, 6]
+            .into_iter()
+            .flat_map(u32::to_le_bytes)
+            .collect::<Vec<_>>();
+        let symbol = Symbol {
+            name: "global".into(),
+            value: 0x1234_8000,
+            size: 0,
+            info: 0x11,
+            other: 0,
+            section: 1,
+        };
+        let output = relocate(&mut data, &rels, &[symbol], 0, 0, 0).unwrap();
+        assert_eq!(output, rels);
+        assert_eq!(u32_at(&data, 0).unwrap(), 0x3c03_1234);
+        assert_eq!(u32_at(&data, 4).unwrap(), 0x8c62_7ff0);
+        assert_eq!(u32_at(&data, 8).unwrap(), 0xac70_7ff8);
+    }
+
+    #[test]
+    fn several_high_halves_can_share_one_low_half() {
+        let mut data = [0x3c03_0000u32, 0x3c04_0000, 0x8c62_0010]
+            .into_iter()
+            .flat_map(u32::to_le_bytes)
+            .collect::<Vec<_>>();
+        let rels = [0u32, 5, 4, 5, 8, 6]
+            .into_iter()
+            .flat_map(u32::to_le_bytes)
+            .collect::<Vec<_>>();
+        let symbol = Symbol {
+            name: "global".into(),
+            value: 0x1234_7ff8,
+            size: 0,
+            info: 0x11,
+            other: 0,
+            section: 1,
+        };
+        let output = relocate(&mut data, &rels, &[symbol], 0, 0, 0).unwrap();
+        assert_eq!(output, rels);
+        assert_eq!(u32_at(&data, 0).unwrap(), 0x3c03_1235);
+        assert_eq!(u32_at(&data, 4).unwrap(), 0x3c04_1235);
+        assert_eq!(u32_at(&data, 8).unwrap(), 0x8c62_8008);
+    }
+
+    #[test]
+    fn gp_relative_addresses_are_resolved_without_runtime_relocations() {
+        let mut instruction = 0x2782_8010u32.to_le_bytes();
+        let mut rel = 0u32.to_le_bytes().to_vec();
+        rel.extend_from_slice(&7u32.to_le_bytes());
+        let mut symbol = Symbol {
+            name: ".sbss".into(),
+            value: 0x18000,
+            size: 0,
+            info: 3,
+            other: 0,
+            section: 1,
+        };
+        let output = relocate(
+            &mut instruction,
+            &rel,
+            &[symbol.clone()],
+            0,
+            0x7ff0,
+            0x1fff0,
+        )
+        .unwrap();
+        assert!(output.is_empty());
+        assert_eq!(u32::from_le_bytes(instruction), 0x2782_8010);
+
+        symbol.info = 0x11;
+        instruction = 0x2782_0004u32.to_le_bytes();
+        relocate(
+            &mut instruction,
+            &rel,
+            &[symbol.clone()],
+            0,
+            0x7ff0,
+            0x1fff0,
+        )
+        .unwrap();
+        assert_eq!(u32::from_le_bytes(instruction), 0x2782_8014);
+
+        symbol.value = 0x28000;
+        assert!(relocate(&mut instruction, &rel, &[symbol], 0, 0, 0).is_err());
     }
 }

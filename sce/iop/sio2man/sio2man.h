@@ -7,10 +7,19 @@ struct Sio2Dma {
   int count;
 };
 
+union Sio2PortControl2 {
+  unsigned int value;
+
+  struct {
+    unsigned short size;
+    unsigned char baud, flags;
+  } timing;
+};
+
 struct Sio2Transfer {
   unsigned int recv1;
   unsigned int send1[4];
-  unsigned int send2[4];
+  union Sio2PortControl2 send2[4];
   unsigned int recv2;
   unsigned int send3[16];
   unsigned int recv3;

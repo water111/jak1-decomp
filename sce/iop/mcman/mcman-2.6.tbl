@@ -1,0 +1,61 @@
+Libname mcman
+Version 2.6
+Flags 0
+
+Entry - # 000
+Entry - # 001
+Entry - # 002
+Entry - # 003
+Entry - # 004
+Entry McDetectCard = mcman_detectcard # 005
+Entry McOpen # 006
+Entry McClose # 007
+Entry McRead # 008
+Entry McWrite # 009
+Entry McSeek # 010
+Entry McFormat # 011
+Entry McGetDir # 012
+Entry McDelete # 013
+Entry McFlush # 014
+Entry McChDir # 015
+Entry McSetFileInfo # 016
+Entry McEraseBlock = mcman_eraseblock # 017
+Entry McReadPage # 018
+Entry McWritePage # 019
+Entry McDataChecksum # 020
+Entry McDetectCard2 # 021
+Entry McGetFormat # 022
+Entry McGetEntSpace # 023
+Entry McReplaceBadBlock # 024
+Entry McCloseAll # 025
+Entry McSetSio2Mode # 026
+Entry - # 027
+Entry - # 028
+Entry McReadPS1PDACard # 029
+Entry McWritePS1PDACard # 030
+Entry - # 031
+Entry - # 032
+Entry - # 033
+Entry - # 034
+Entry - # 035
+Entry McUnformat # 036
+Entry McInit # 037
+Entry McGetFreeClusters # 038
+Entry McGetMcType # 039
+Entry McUnknown40 # 040
+Entry - # 041
+Entry McGetModuleInfo # 042
+Entry McGetCardSpec # 043
+Entry McGetFATentry # 044
+Entry McCheckBlock # 045
+Entry McSetFATentry # 046
+Entry McReadDirEntry # 047
+Entry Mc1stCacheEntSetWrFlagOff # 048
+Entry McCreateDirentry # 049
+Entry McReadCluster # 050
+Entry McFlushCache # 051
+Entry McSetDirEntryState # 052
+Entry McGetSemaphore # 053
+Entry mcman_read_page_fast # 054
+Entry mcman_get_probe_status # 055
+Entry - # 056

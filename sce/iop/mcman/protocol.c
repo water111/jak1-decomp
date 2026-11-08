@@ -3,10 +3,19 @@
 #include "sce/iop/mcman/transport.h"
 #include "sce/iop/secrman/secrman.h"
 #include "sce/iop/sio2man/sio2man.h"
+#include "sce/iop/stdio/stdio.h"
 #include "sce/iop/sysclib/string.h"
 
 extern struct Sio2Transfer mcman_sio2_packet;
 extern u_char mcman_write_dma[1584], mcman_read_dma[1584];
+
+#if MCMAN_VERSION >= 0x0220
+extern int mcman_probe_status;
+
+int mcman_get_probe_status(void) {
+  return mcman_probe_status;
+}
+#endif
 
 void mcman_begin_transfer(int port, int slot) {
   int slots[8];
@@ -56,12 +65,23 @@ void mcman_initPS2com(void) {
   SecrSetMcDevIDHandler(mcman_getcnum);
 }
 
+#if MCMAN_VERSION >= 0x0220
+void mcman_shutdownPS2com(void) {
+  SecrSetMcCommandHandler(0);
+  SecrSetMcDevIDHandler(0);
+}
+#endif
+
 extern struct Sio2Transfer mcman_sio2_packet;
 extern u_char mcman_write_dma[1584], mcman_read_dma[1584];
 u_char mcman_command_table[][2] = {{0x11, 4},   {0x12, 4},   {0x21, 9},  {0x22, 9}, {0x23, 9},
                                    {0x24, 134}, {0x25, 4},   {0x26, 13}, {0x27, 5}, {0x28, 5},
                                    {0x42, 134}, {0x43, 134}, {0x81, 4},  {0x82, 4}, {0x42, 6},
                                    {0x43, 6},   {0xbf, 5},   {0xf3, 5}};
+
+#if MCMAN_VERSION >= 0x0220
+int mcman_probe_status = 1;
+#endif
 
 struct McSio2Command {
   u_int port : 2;
@@ -148,7 +168,12 @@ int mcman_cardchanged(int port, int slot) {
     mcman_begin_transfer(port, slot);
     sio2_transfer_legacy(&mcman_sio2_packet);
     mcman_end_transfer();
-    if ((mcman_sio2_packet.recv1 & 0xf000) == 0x1000 && mcman_read_dma[3] != 0x66)
+    if ((mcman_sio2_packet.recv1 & 0xf000) == 0x1000 && mcman_read_dma[3]
+#if MCMAN_VERSION >= 0x0220
+                                                            == 0x55)
+#else
+                                                            != 0x66)
+#endif
       return 0;
   }
   return -1;
@@ -424,6 +449,9 @@ int mcman_probePS2Card2(int port, int slot) {
 
 int mcman_probePS2Card(int port, int slot) {
   int retry, result;
+#if MCMAN_VERSION >= 0x0220
+  mcman_probe_status = 255;
+#endif
   if (mcman_cardchanged(port, slot) == 0 && McGetFormat(port, slot) != 0)
     return 0;
   if (mcman_resetauth(port, slot) != 0)
@@ -455,6 +483,20 @@ int mcman_probePS2Card(int port, int slot) {
   }
   if (retry == 5)
     return -13;
+#if MCMAN_VERSION >= 0x0220
+  mcman_build_command(port, slot, -1, 0);
+  mcman_build_command(port, slot, 16, (void*)0x55);
+  mcman_build_command(port, slot, -2, 0);
+  for (retry = 0; retry < 5; retry++) {
+    mcman_begin_transfer(port, slot);
+    sio2_transfer_legacy(&mcman_sio2_packet);
+    mcman_end_transfer();
+    if ((mcman_sio2_packet.recv1 & 0xf000) == 0x1000 && mcman_read_dma[4] == 0x55)
+      break;
+  }
+  if (retry == 5)
+    return -14;
+#endif
   result = mcman_setPS2devinfos(port, slot);
   if (result == 0)
     return -1;
@@ -465,6 +507,35 @@ int mcman_probePS2Card(int port, int slot) {
 
 extern struct Sio2Transfer mcman_sio2_packet;
 extern u_char mcman_write_dma[1584], mcman_read_dma[1584];
+
+#if MCMAN_VERSION >= 0x0220
+int mcman_read_page_fast(int port, int slot, int page) {
+  int i;
+  int channel;
+  mcman_cardchanged(port, slot);
+  mcman_build_command(port, slot, -1, 0);
+  mcman_build_command(port, slot, 4, (void*)page);
+  for (i = 0; i < 4; i++)
+    mcman_build_command(port, slot, 11, 0);
+  mcman_build_command(port, slot, 12, 0);
+  mcman_build_command(port, slot, -2, 0);
+  channel = (port & 1) + 2;
+  mcman_sio2_packet.send2[channel].timing.size = 0x7fff;
+  mcman_sio2_packet.send2[channel].timing.baud = 3;
+  sio2_mc_init_legacy();
+  sio2_transfer_legacy(&mcman_sio2_packet);
+  sio2_transfer_reset_legacy();
+  mcman_sio2_packet.send2[channel].timing.size = 0xffff;
+  mcman_sio2_packet.send2[channel].timing.baud = 5;
+  if ((mcman_sio2_packet.recv1 & 0xf000) != 0x1000 || mcman_read_dma[8] != 0x55 ||
+      mcman_read_dma[723] != 0x55) {
+    printf("r(%02x,%02x,%02x)", mcman_sio2_packet.recv1 >> 8, mcman_read_dma[8],
+           mcman_read_dma[723]);
+    return -1;
+  }
+  return 0;
+}
+#endif
 
 int mcman_security_command(int port, int slot, struct Sio2Transfer* packet) {
   int result;
@@ -545,3 +616,21 @@ int mcman_correctECC(void* data, const u_char* ecc) {
     return -2;
   return -3;
 }
+
+#if MCMAN_VERSION >= 0x0222
+int mcman_reserved_export_57(void) {
+  return 0;
+}
+
+int mcman_reserved_export_58(void) {
+  return 0;
+}
+
+int mcman_reserved_export_56(void) {
+  return 0;
+}
+
+int mcman_reserved_export_59(void) {
+  return 0;
+}
+#endif

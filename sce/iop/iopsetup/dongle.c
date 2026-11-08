@@ -3,6 +3,10 @@
 #include "sce/iop/thbase/thread.h"
 #include "sce/iop/usbd/usbd.h"
 
+#ifndef IOPSETUP_REVISION
+#define IOPSETUP_REVISION 20011031
+#endif
+
 #define WIBU_VENDOR_ID 0x064f
 #define WIBU_FIRST_PRODUCT_ID 0x0bd7
 #define WIBU_SERIAL_BASE 5000000
@@ -226,9 +230,19 @@ int start(int argc, char** argv) {
         if (wibu_id == dongle_table[i] + WIBU_SERIAL_BASE)
           found = 1;
       }
-      // also allow in this range.
+#if IOPSETUP_REVISION >= 20030405
+      if (wibu_id >= 5009148 && wibu_id < 5009898)
+        found = 1;
+      if (wibu_id >= 5005855 && wibu_id < 5006855)
+        found = 1;
+#if IOPSETUP_REVISION >= 20030713
+      if (wibu_id >= 5039335 && wibu_id < 5040335)
+        found = 1;
+#endif
+#else
       if (wibu_id > 0x4c6efb && wibu_id <= 0x4c721b)
         found = 1;
+#endif
       if (found)
         break;
     }

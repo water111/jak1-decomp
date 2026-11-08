@@ -6,6 +6,9 @@ struct UsbHub {
   struct UsbHub* next;
   u_int reserved;
   u_int id;
+#if USBD_DRIVER_VERSION >= 0x010000
+  struct UsbDevice* device;
+#endif
   struct UsbEndpoint* control;
   struct UsbEndpoint* interrupt;
   struct UsbRequest control_request;
@@ -22,6 +25,7 @@ struct UsbHub {
   u_char bitmap[32];
 };
 extern struct UsbHub* usb_free_hubs;
+extern struct UsbHub* usb_hub_memory;
 extern u_int usb_next_hub_id;
 struct UsbHub* usb_alloc_hub(void);
 void usb_free_hub(struct UsbHub* hub);

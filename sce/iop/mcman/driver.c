@@ -16,7 +16,11 @@ int mcman_ionop(void) {
 }
 
 int mcman_iounsupported(void) {
+#if MCMAN_VERSION >= 0x0220
+  return -48;
+#else
   return -38;
+#endif
 }
 
 int McGetSemaphore(void) {
@@ -27,7 +31,11 @@ int mcman_ioerrcode(int result) {
   if (result < 0) {
     switch (result) {
       case -2:
+#if MCMAN_VERSION >= 0x0220
+        result = -47;
+#else
         result = -31;
+#endif
         break;
       case -3:
         result = -28;
@@ -127,6 +135,18 @@ int mcman_initdev(void) {
     return 0;
   }
 }
+
+#if MCMAN_VERSION >= 0x0220
+int mcman_shutdown_device(void) {
+  int result, semaphore;
+  WaitSema(mcman_io_semaphore);
+  semaphore = mcman_io_semaphore;
+  mcman_io_semaphore = 0;
+  result = DeleteSema(semaphore);
+  DelDrv(mcman_driver.name);
+  return result == 0 || result == -408;
+}
+#endif
 
 int mcman_iodeinit(void) {
   DeleteSema(mcman_io_semaphore);
@@ -339,6 +359,40 @@ int mcman_iorename(struct McIoFile* file, const char* old_path, const char* new_
   return mcman_ioerrcode(result);
 }
 
+#if MCMAN_VERSION >= 0x0220
+#define MCMAN_DEVCTL_CLUSTER_SIZE 0x5001
+#define MCMAN_DEVCTL_FREE_CLUSTERS 0x5002
+
+int mcman_iodevctl(struct McIoFile* file, const char* path, int command) {
+  int result, type;
+  WaitSema(mcman_io_semaphore);
+  mcman_unit2card(file->unit);
+  result = McDetectCard2(mcman_io_card.port, mcman_io_card.slot);
+  if (result < -1) {
+    SignalSema(mcman_io_semaphore);
+    return mcman_ioerrcode(result);
+  }
+  type = McGetMcType(mcman_io_card.port, mcman_io_card.slot);
+  switch (command) {
+    case MCMAN_DEVCTL_CLUSTER_SIZE:
+      if (type == 2)
+        result = 1024;
+      if (type == 1 || type == 3)
+        result = 8192;
+      break;
+    case MCMAN_DEVCTL_FREE_CLUSTERS:
+      result = McGetFreeClusters(mcman_io_card.port, mcman_io_card.slot);
+      break;
+    default:
+      result = -22;
+  }
+  SignalSema(mcman_io_semaphore);
+  if (result < 0)
+    return -22;
+  return result;
+}
+#endif
+
 int mcman_iolock(void) {
   WaitSema(mcman_io_semaphore);
   return 0;
@@ -350,7 +404,12 @@ static void* mcman_driver_operations[] = {
     mcman_iolock,        mcman_ioremove,      mcman_iomkdir,       mcman_iormdir,
     mcman_iodopen,       mcman_iodclose,      mcman_iodread,       mcman_iogetstat,
     mcman_iochstat,      mcman_iorename,      mcman_iounsupported, mcman_iounsupported,
-    mcman_iounsupported, mcman_iounsupported, mcman_iounsupported, mcman_iounsupported,
+    mcman_iounsupported, mcman_iounsupported, mcman_iounsupported,
+#if MCMAN_VERSION >= 0x0220
+    mcman_iodevctl,
+#else
+    mcman_iounsupported,
+#endif
     mcman_iounsupported, mcman_iounsupported, mcman_iounsupported,
 };
 struct IopDevice mcman_driver = {mcman_driver_name, 0x10000010, 1, mcman_driver_description,

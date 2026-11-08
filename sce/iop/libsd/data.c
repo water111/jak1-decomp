@@ -68,6 +68,16 @@ SdEffectRegisters sd_effect_presets[SD_REV_MODE_MAX] = {
      0xb1,  0x11f, 0x59,  0x1a0,  0xe3,   0x58,   0x40,   0x28,   0x14,   0x8000, 0x8000},
 };
 u_char sd_effect_clear_buffer[SD_EFFECT_CLEAR_BUFFER_SIZE] __attribute__((aligned(16))) = {0};
+#if LIBSD_VERSION >= 0x0301
+#if LIBSD_VERSION >= 0x0303
+char sd_build_id[16] = "PsIIlibsd   2710";
+#else
+char sd_build_id[16] = "PsIIlibsd   2430";
+#endif
+volatile u_short* sd_spu_registers = (volatile u_short*)SPU2_BASE;
+int sd_transfer_active[2] = {0, 0};
+volatile int sd_transfer_status[2] = {1, 1};
+#else
 SdEffectAttr sd_effect_attrs[2] = {{0}, {0}};
 int sd_initialized = 0;
 sceSdCallback sd_irq_callback = 0;
@@ -88,3 +98,5 @@ volatile int sd_transfer_status[2] = {1, 1};
 int sd_dma_read_mode = 0;
 void* volatile sd_dma_memory = 0;
 int sd_dma_blocks = 0;
+
+#endif

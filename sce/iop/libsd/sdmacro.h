@@ -41,6 +41,7 @@
 #define SD_BSET_SWITCH 0x02
 #define SD_BSET_ADDR 0x03
 
+#define SD_A_ESA 0x1c00
 #define SD_A_EEA 0x1d00
 
 #define SD_VA_SSA ((0x20 << 8) + (0x01 << 6))
@@ -64,6 +65,7 @@
 #define SD_P_EVOLL 0x0b80
 #define SD_P_EVOLR 0x0c80
 
+#define SD_S_NON (0x14 << 8)
 #define SD_S_KON (0x15 << 8)
 #define SD_S_KOFF (0x16 << 8)
 #define SD_S_VMIXEL (0x19 << 8)

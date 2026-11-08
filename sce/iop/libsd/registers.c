@@ -1,5 +1,5 @@
 #include "sce/iop/libsd/hardware.h"
-#include "sce/iop/libsd/libsd.h"
+#include "sce/iop/libsd/internal.h"
 
 volatile u_short* const sd_registers[] = {
     (volatile u_short*)(SPU2_BASE + 0x0),
@@ -48,7 +48,13 @@ volatile u_short* const sd_registers[] = {
 void sceSdSetParam(u_short entry, u_short value) {
   int core = (entry & 1) * (SPU2_CORE_STRIDE -
                             ((entry & 0x80) >> 7) * (SPU2_CORE_STRIDE - SPU2_VOLUME_CORE_STRIDE));
+#if LIBSD_VERSION >= 0x0301
+  volatile u_short* reg = (volatile u_short*)((u_int)sd_registers[entry >> 8] + core);
+  reg += (entry & 0x3e) * 4;
+  *reg = value;
+#else
   *(u_short*)((u_int)sd_registers[entry >> 8] + core + (entry & 0x3e) * 8) = value;
+#endif
 }
 
 u_short sceSdGetParam(u_short entry) {
@@ -60,8 +66,16 @@ u_short sceSdGetParam(u_short entry) {
 void sceSdSetSwitch(u_short entry, u_int value) {
   int index = entry >> 8;
   entry &= 1;
+#if LIBSD_VERSION >= 0x0301
+  {
+    volatile u_short* reg = sd_registers[index] + entry * (SPU2_CORE_STRIDE / sizeof(u_short));
+    *reg++ = value;
+    *reg = (value >> 16) & 255;
+  }
+#else
   sd_registers[index][entry * (SPU2_CORE_STRIDE / sizeof(u_short))] = value;
   sd_registers[index][entry * (SPU2_CORE_STRIDE / sizeof(u_short)) + 1] = (value >> 16) & 255;
+#endif
 }
 
 u_int sceSdGetSwitch(u_short entry) {
@@ -74,9 +88,19 @@ u_int sceSdGetSwitch(u_short entry) {
 void sceSdSetAddr(u_short entry, u_int value) {
   u_short* reg = (u_short*)((u_int)sd_registers[entry >> 8] + (entry & 1) * SPU2_CORE_STRIDE +
                             (entry & 0x3e) * 6);
+#if LIBSD_VERSION >= 0x0301
+  u_int high = value >> 17;
+  entry &= 0xff00;
+  // Matching: calculate the register class before the first hardware write.
+  asm("" ::"r"(entry), "r"(high));
+  *reg++ = high;
+  if ((entry & 0xff00) != 0x1d00)
+    *reg = (value >> 1) & 0xfff8;
+#else
   reg[0] = value >> 17;
   if ((entry & 0xff00) != 0x1d00)
     reg[1] = (value >> 1) & 0xfff8;
+#endif
 }
 
 u_int sceSdGetAddr(u_short entry) {
@@ -89,7 +113,11 @@ u_int sceSdGetAddr(u_short entry) {
     if ((entry & 0xff00) == 0x2100 || (entry & 0xff00) == 0x2200) {
       u_int next_high = reg[0] << 17;
       u_int next_low = reg[1] << 1;
+#if LIBSD_VERSION >= 0x0301
+      if (high != next_high || low == next_low) {
+#else
       if (high == next_high || low != next_low) {
+#endif
         high = next_high;
         low = next_low;
       }
