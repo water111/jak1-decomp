@@ -1,1 +1,359 @@
+;; GOAL Kernel
+
+(defconstant *kernel-major-version* 20)
+(defconstant *kernel-minor-version* 0)
+(defconstant *irx-major-version* 2)
+(defconstant *irx-minor-version* 0)
+
+(defconstant DPROCESS_STACK_SIZE #x3800)
+(defconstant PROCESS_STACK_SIZE #x1c00)
+(defconstant PROCESS_STACK_SAVE_SIZE 256)
+(defconstant PROCESS_HEAP_SIZE (* 984 1024))
+(defconstant *scratch-memory-top* #x70004000)
+(defconstant *gtype-basic-offset* 4)
+
+(deftype-extern process)
+
+(defenum process-mask
+  (execute         ;; prevent from running
+   draw            ;; unused
+   pause           ;; prevent from running when paused
+   menu            ;; prevent from running with debug menu open
+   progress        ;; prevent from running with progress menu open
+   actor-pause     ;; allow entity system to prevent from running when far away
+   sleep           ;; prevent from running until state is changed.
+   sleep-code      ;; do not run code, but run other handlers.
+   process-tree    ;; identifies a process-tree node (no actual process)
+   heap-shrunk     ;; kernel has shrunk this process's heap already
+   going           ;; process going to a new state, next-state is set.
+   movie           ;; prevent from running when in a movie
+   movie-subject   ;; set on silostep, unused otherwise.
+   target          ;; set on target
+   sidekick        ;; set on sidekick
+   crate           ;; set on all crates
+   collectable     ;; set on all collectables
+   enemy           ;; set on all enemies (including things like seagulls)
+   camera          ;; set on all cameras
+   platform        ;; set on all platforms
+   ambient         ;; set on all ambients
+   entity          ;; set on all processes spawned from entities
+   projectile      ;; set on all projectiles
+   attackable      ;; set on anything that can be attacked.
+   death)          ;; set on misty-conveyor, appears unused.
+  :bit-list #t
+  :type uint32)
+
+(defconstant PROCESS_CLEAR_MASK
+  (lognot (process-mask sleep sleep-code process-tree heap-shrunk)))
+
+(deftype kernel-context (basic)
+  ((prevent-from-run   process-mask) ;; don't run processes with any of these bits set.
+   (require-for-run    process-mask) ;; unused
+   (allow-to-run       process-mask) ;; unused
+   (next-pid           int32)        ;; next unused unique process ID
+   (fast-stack-top     pointer)      ;; scratchpad stack
+   (current-process    process)      ;; currently executing process
+   (relocating-process process)      ;; currently relocating process
+   (relocating-min     int32 :print-as hex) ;; start of process heap memory being relocated
+   (relocating-max     int32 :print-as hex) ;; end of process heap memory being relocated
+   (relocating-offset  int32) ;; how far the memory being relocated is moving
+   (low-memory-message symbol) ;; should we print warnings if low on memory?
+   )
+  :documentation
+  "Kernel settings and state.")
+
+;; A thread belongs to a process and has a reference to a stack.
+;; they have an "execution stack", which is where the stack goes when the thread runs.
+;; and optionally a "backup stack", which stores the stack when the thread doesn't run.
+;; this means threads can't leak pointers to stack variables to other threads...
+;; optionally, threads may know how to suspend/resume themselves.
+
+(deftype-extern stack-frame)
+(deftype-extern state)
+(deftype-extern cpu-thread)
+(deftype-extern dead-pool)
+(deftype-extern event-message-block)
+
+(deftype thread (basic)
+  ((name         symbol)
+   (process      process) ;; process that the thread belongs to
+   (previous     thread)  ;; previous thread that was running before this.
+   (suspend-hook (function cpu-thread none)) ;; function to suspend this thread
+   (resume-hook  (function cpu-thread none)) ;; function to resume this thread
+   (pc           pointer) ;; program counter of the thread
+   (sp           pointer) ;; stack pointer of the thread (actual stack)
+   (stack-top    pointer) ;; top of the thread's stack (actual stack)
+   (stack-size   int32)   ;; size of the thread's stack (backup stack)
+   )
+  :documentation
+  "Record for a running or suspended thread.
+   Some threads are temporary, others can be suspended and resume through the hooks."
+  (:methods
+   (stack-size-set! (_type_ int) none)
+   (thread-suspend (_type_) none)
+   (thread-resume (_type_) none))
+  ;; is already defined in kscheme but we define it again.
+  )
+
+(deftype cpu-thread (thread)
+  ((rreg  uint64 8)
+   (freg  float 6)
+   (stack uint8 :dynamic) ;; stack memory (dynamic array)
+   )
+  :documentation
+  "Private implementation detail of thread with room to save context."
+  (:methods
+   (new (symbol type process symbol int pointer) _type_)
+   (thread-suspend (_type_) none)
+   (thread-resume (_type_) none)))
+
+;; To track processes which move in memory, we instead keep a reference to a smaller
+;; record that does not move, containing the address of the process, which may change.
+;; This is like a C Process**, or GOAL (pointer process). This is abbreviated ppointer.
+
+(deftype-extern entity-actor)
+
+(deftype process-tree (basic)
+  ((name     symbol)
+   (mask     process-mask)
+   ;; tree
+   (parent   (pointer process-tree))
+   (brother  (pointer process-tree))
+   (child    (pointer process-tree))
+
+   ;; a process knows its ppointer
+   (ppointer (pointer process))
+
+   ;; for processes that don't move, they can set their ppointer to &self.
+   (self     process-tree))
+  :documentation
+  "Process tree node."
+  (:methods
+   (new (symbol type basic) _type_)
+   (activate (_type_ process-tree basic pointer) process-tree)
+   (deactivate (_type_) none)
+   (init-from-entity! (_type_ entity-actor) none)
+   (run-logic? (_type_) symbol)
+   (unused () none))
+  :no-runtime-type ;; already defined by kscheme. Don't do it again.
+  )
+
+(deftype process (process-tree)
+  ((pool             dead-pool)    ;; the memory pool we came from, and should return to when we die
+   (status           symbol)
+   (pid              int32)        ;; unique process ID
+   (main-thread      cpu-thread)   ;; our suspendable main thread
+   (top-thread       thread)       ;; currently running thread, either main or a temporary.
+   (entity           entity-actor) ;; if created by entity system, the owning actor.
+   (state            state)        ;; if we use the state system, our current state
+
+   ;; the kernel runs the trans, post, and event callbacks
+   (trans-hook       (function none))
+   (post-hook        (function none)) 
+   (event-hook       (function process int symbol event-message-block object)) 
+
+   (allocated-length int32)   ;; The size of "stack" below.
+   (next-state       state)   ;; if we are "going", the next state to go to.
+   (heap-base        pointer) ;; process heap
+   (heap-top         pointer)
+   (heap-cur         pointer)
+   ;; BUG: this overlay doesn't have enough room and heap.top-cur overlays
+   ;; stack-frame-top.
+   (heap             kheap :overlay-at heap-base)
+   (stack-frame-top  stack-frame) ;; top means "closest to current execution"
+   (connection-list  connectable :inline) ;; list of engines we're connected to
+   (stack            uint8 :dynamic)      ;; memory for fields + process heap
+   )
+  :documentation
+  "Actual process type. Users are expected to create their own derived classes."
+  (:methods
+   (new (symbol type basic int) _type_))
+  :no-runtime-type ;; already defined by kscheme. Don't do it again.
+  )
+
+(deftype dead-pool (process-tree)
+  ()
+  :documentation
+  "Process tree node where all children are dead processes that
+   can be allocated by the methods below."
+  (:methods
+   (new (symbol type int int basic) _type_)
+   (get-process (_type_ type int) process)
+   (return-process (_type_ process) none)))
+
+(deftype dead-pool-heap-rec (structure)
+  ((process process)
+   (prev    dead-pool-heap-rec)
+   (next    dead-pool-heap-rec))
+  :documentation
+  "Record for a process inside of a heap that supports relocating the process.
+   This record is owned by the heap itself and won't be moved.
+   These belong to live/dead lists."
+  (:pad-inline-arrays #f)
+  )
+
+(deftype dead-pool-heap (dead-pool)
+  ((allocated-length   int32)  ;; size of heap
+   (compact-time       uint32) ;; unused...
+   (compact-count-targ uint32) ;; number of compactions requested
+   (compact-count      uint32) ;; number of compactions performed
+   (fill-percent       float)  ;; unused
+   (first-gap          dead-pool-heap-rec) ;; the lowest process with a gap in the heap
+   (first-shrink       dead-pool-heap-rec) ;; the lowest process that needs shrinking
+   (heap               kheap :inline) ;; our shared heap for processes
+   (alive-list         dead-pool-heap-rec :inline) ;; records for processes that are alive
+   (last               dead-pool-heap-rec :overlay-at (-> alive-list prev))
+   (dead-list          dead-pool-heap-rec :inline) ;; unused records
+   (process-list       dead-pool-heap-rec :inline :dynamic) ;; array of records
+   )
+  :documentation
+  "Heap of processes. Allocated processes are relocated to avoid fragmentation.
+   This also maintains stationary record objects so the moving processes can
+   have ppointers."
+  (:methods
+   (new (symbol type basic int int) _type_)
+   (compact (dead-pool-heap int) none)
+   (shrink-heap (dead-pool-heap process) dead-pool-heap)
+   (churn (dead-pool-heap int) none)
+   (memory-used (dead-pool-heap) int)
+   (memory-total (dead-pool-heap) int)
+   (gap-size (dead-pool-heap dead-pool-heap-rec) int)
+   (gap-location (dead-pool-heap dead-pool-heap-rec) pointer)
+   (find-gap (dead-pool-heap dead-pool-heap-rec) dead-pool-heap-rec)
+   (find-gap-by-size (dead-pool-heap int) dead-pool-heap-rec)
+   (memory-free (dead-pool-heap) int)
+   (compact-time (dead-pool-heap) uint)))
+
+(deftype stack-frame (basic)
+  ((name symbol)
+   (next stack-frame) ;; containing frame.
+   )
+  :documentation
+  "Stack frame for unwinding/cleanup."
+  :no-runtime-type
+  )
+
+(deftype catch-frame (stack-frame)
+  ((sp   int32 :print-as hex)
+   (ra   int32 :print-as hex)
+   (freg float 6)
+   (rreg uint128 8)
+   )
+  :documentation
+  "Stack frame that you can 'throw' back to.
+   Stores the CPU registers at the time of creation."
+  (:methods
+   (new (symbol type symbol function (pointer uint64)) object)))
+
+(deftype protect-frame (stack-frame)
+  ((exit (function object)))
+  :documentation
+  "Invokes exit function when unwinding the stack,
+   used to run cleanup functions when throwing back."
+  (:methods
+   (new (symbol type (function object)) protect-frame)))
+
+;; The handle is a compact, 64-bit reference to a particular process.
+;; It uses ppointer, to handle the case of a process moving in memory,
+;; and remembers the ID of the process, to reject a different process
+;; reusing the same memory.
+
+(deftype handle (uint64)
+  ((process (pointer process)) ;; set to #f for null.
+   (pid     int32)
+   (u64     uint64 :offset 0 :print-as nothing)))
+
+(defmacro handle->process (value)
+  "Convert a handle to a process. If the process no longer exists, returns #f."
+  ;; TODO try cleaning this up??
+  `(let ((the-handle (the handle ,value)))
+    (and (-> the-handle process) 
+      (let ((proc (-> (-> the-handle process))))
+        (let ((resolved (if (= (-> the-handle pid) (-> proc pid)) 
+                            proc)))
+          (let ((unused resolved)))
+          resolved)))))
+
+(defmacro ppointer->process (ppointer)
+  "convert a (pointer process) to a process."
+  ;; unclear why this uses the self field.
+  `(let ((the-pp ,ppointer)) 
+     (the process-tree (if the-pp (-> the-pp 0 self)))))
+
+(defmacro process->ppointer (proc)
+  "safely get a (pointer process) from a process, returning #f if invalid."
+  `(let ((the-proc ,proc)) 
+     (if the-proc (-> the-proc ppointer))))
+
+(defmacro ppointer->handle (pproc)
+  "convert a ppointer to a handle. assumes the ppointer is valid."
+  `(let ((the-process (the (pointer process) ,pproc)))
+     (new 'static 'handle :process the-process :pid (-> the-process 0 pid))))
+
+(defmacro process->handle (proc)
+  "convert a process to a handle. if proc is #f, returns a #f handle."
+  `(ppointer->handle (process->ppointer ,proc)))
+
+(defmethod print ((this handle))
+  "print a handle"
+  (if (nonzero? (-> this u64))
+      (format #t "#<handle :process ~A :pid ~D>" (handle->process this) (-> this pid))
+      (format #t "#<handle :process 0 :pid 0>"))
+  this)
+
+(deftype state (protect-frame)
+  ((code  function)
+   (trans (function object))
+   (post  (function none))
+   (enter function)
+   (event (function process int symbol event-message-block object)))
+  :documentation
+  "A state is a collection of functions that describe how a process runs.
+   Gameplay code switches between state to execute different behaviors.
+   - code  : long running main function that is suspended and resumed.
+   - trans : function called prior to resuming code
+   - post  : function called after code is suspended
+   - enter : function called once when entering this state
+   - event : function called to handle incoming events
+   - exit  : function called when switching out of this state, or deactivating the process.
+   A state itself is a protect-frame which runs the exit function when throwing out of it."
+  (:methods
+   (new (symbol type symbol function (function object) function (function object) (function process int symbol event-message-block object)) _type_)))
+
+(deftype event-message-block (structure)
+  ((to         process)
+   (from       process)
+   (num-params int32)
+   (message    symbol)
+   (param      uint64 7))
+  :documentation
+  "Data sent between processes when sending an event.
+   There's a symbol to idenfity the message, then 7 64-bit parameters."
+  :always-stack-singleton)
+
+(defmacro process-stack-used (proc)
+  "Return the bytes used by a process's current thread stack."
+  `(- (the int (-> ,proc top-thread stack-top))
+      (the int (-> ,proc top-thread sp))))
+
+(defmacro process-stack-size (proc)
+  "Return the backup capacity of a process's main thread stack."
+  `(-> ,proc main-thread stack-size))
+
+(defmacro process-heap-used (proc)
+  "Return the allocated portion of a process's private heap."
+  `(- (-> ,proc allocated-length)
+      (- (the int (-> ,proc heap-top)) (the int (-> ,proc heap-cur)))))
+
+(defmacro process-heap-size (proc)
+  "Return the size of a process's private heap."
+  `(the int (-> ,proc allocated-length)))
+
+(defmacro process-mask? (mask enum-value)
+  "Test a named bit in a process mask."
+  `(nonzero? (logand ,mask (process-mask ,enum-value))))
+
+(defmacro process-mask-set! (mask &rest enum-value)
+  "Set the named bits in a process mask."
+  `(set! ,mask (logior ,mask (process-mask ,@enum-value))))
 

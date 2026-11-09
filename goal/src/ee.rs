@@ -56,6 +56,7 @@ pub enum RegisterOpcode {
     Multu = 0x19,
     Div = 0x1a,
     Divu = 0x1b,
+    Subu = 0x23,
     And = 0x24,
     Or = 0x25,
     Xor = 0x26,

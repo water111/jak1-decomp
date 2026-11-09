@@ -383,7 +383,7 @@ impl Default for TypeOptions {
             allow_array_access: false,
             c_type: false,
             dynamic_size: false,
-            pad_inline_arrays: false,
+            pad_inline_arrays: true,
             large_type: false,
             friends: Vec::new(),
             states: Vec::new(),
@@ -817,10 +817,9 @@ impl TypeSystem {
             return self.layout(definition.parent, visibility);
         }
         if self.declaration(ty, visibility).is_ok() {
-            return Err(format!(
-                "type `{}` is only forward declared and has no layout yet",
-                self.type_name(ty)
-            ));
+            // Forward-declared GOAL structures can be passed and stored by
+            // reference before their complete field layout is available.
+            return Ok(TypeLayout::structure(TypeKind::Basic, true));
         }
         Err(self.unknown_or_invisible(ty, visibility, "type definition"))
     }
@@ -1022,6 +1021,41 @@ impl TypeSystem {
             result_type,
             needs_deref,
         })
+    }
+
+    pub fn inherited_fields(
+        &self,
+        base: Type,
+        visibility: &Visibility,
+    ) -> TypeResult<Vec<FieldDefinition>> {
+        let basic = Type(SymbolId(fnv64(b"basic")));
+        let structure = Type(SymbolId(fnv64(b"structure")));
+        let mut chain = Vec::new();
+        let mut current = Some(base);
+        while let Some(ty) = current {
+            if ty == basic || ty == structure {
+                break;
+            }
+            let definition = self.definition(ty, visibility)?;
+            chain.push(definition);
+            current = definition.parent;
+        }
+
+        let mut fields: Vec<FieldDefinition> = Vec::new();
+        for definition in chain.into_iter().rev() {
+            for field in &definition.fields {
+                if field.replaces_parent
+                    && let Some(existing) = fields
+                        .iter_mut()
+                        .find(|existing| existing.name == field.name)
+                {
+                    *existing = field.clone();
+                } else {
+                    fields.push(field.clone());
+                }
+            }
+        }
+        Ok(fields)
     }
 
     pub fn lookup_bit_field(
@@ -1227,6 +1261,12 @@ impl TypeSystem {
             method_declarations,
             visibility,
         )?;
+        if matches!(layout.kind, TypeKind::Structure | TypeKind::Basic)
+            && !definition.options.pad_inline_arrays
+        {
+            layout.inline_array_alignment =
+                self.packed_field_alignment(definition.parent, &fields, visibility)?;
+        }
         if layout.kind == TypeKind::BitField
             && definition.runtime_type == RuntimeType(definition.name.0)
         {
@@ -1277,11 +1317,23 @@ impl TypeSystem {
                 ));
             }
 
-            let field_layout =
-                self.layout(self.type_spec_base(declaration.field_type), visibility)?;
+            let field_type = self.type_spec_base(declaration.field_type);
+            let field_layout = match self.layout(field_type, visibility) {
+                Ok(layout) => layout,
+                Err(_) if self.declaration(field_type, visibility).is_ok() => {
+                    if declaration.inline {
+                        return Err(format!(
+                            "inline field `{}` requires its type to be fully defined",
+                            self.symbol_name(declaration.name).unwrap_or("<unknown>")
+                        ));
+                    }
+                    TypeLayout::structure(TypeKind::Basic, true)
+                }
+                Err(error) => return Err(error),
+            };
             layout.dynamic |= declaration.dynamic;
             let natural_alignment = if declaration.inline {
-                field_layout.alignment
+                field_layout.inline_array_alignment
             } else if field_layout.kind.is_reference() {
                 POINTER_SIZE
             } else {
@@ -1355,6 +1407,33 @@ impl TypeSystem {
             });
         }
         Ok(result)
+    }
+
+    fn packed_field_alignment(
+        &self,
+        parent: Option<Type>,
+        fields: &[FieldDefinition],
+        visibility: &Visibility,
+    ) -> TypeResult<u32> {
+        let mut alignment = fields
+            .iter()
+            .map(|field| field.alignment)
+            .max()
+            .unwrap_or(1);
+        let mut current = parent;
+        while let Some(ty) = current {
+            let definition = self.definition(ty, visibility)?;
+            alignment = alignment.max(
+                definition
+                    .fields
+                    .iter()
+                    .map(|field| field.alignment)
+                    .max()
+                    .unwrap_or(1),
+            );
+            current = definition.parent;
+        }
+        Ok(alignment)
     }
 
     fn layout_bit_fields(
@@ -1469,7 +1548,8 @@ impl TypeSystem {
                 .transpose()?
                 .flatten();
             let (slot, overrides_parent) = if let Some(inherited) = inherited {
-                if inherited.signature != declaration.signature {
+                let constructor = self.symbol_name(declaration.name) == Some("new");
+                if !constructor && inherited.signature != declaration.signature {
                     return Err(format!(
                         "method `{}` has signature {}, but the inherited signature is {}",
                         self.symbol_name(declaration.name).unwrap_or("<unknown>"),
@@ -2010,6 +2090,8 @@ impl TypeSystem {
         let type_type = self.intern_type("type");
         let pair = self.intern_type("pair");
         let array = self.intern_type("array");
+        let kheap = self.intern_type("kheap");
+        let connectable = self.intern_type("connectable");
         let varargs = self.intern_type("_varargs_");
         let method_type = self.intern_type("_type_");
 
@@ -2119,6 +2201,15 @@ impl TypeSystem {
                 Some(RuntimeType(pointer.0)),
             );
         }
+        for ty in [kheap, connectable] {
+            self.insert_builtin(
+                ty,
+                Some(structure),
+                TypeLayout::structure(TypeKind::Structure, false),
+                None,
+            );
+        }
+        self.install_kernel_structure_fields(kheap, connectable, pointer);
         for ty in [function, symbol, string, type_type, array] {
             self.insert_builtin(
                 ty,
@@ -2219,6 +2310,59 @@ impl TypeSystem {
             access: FieldAccess::Public,
             span: None,
         });
+    }
+
+    fn install_kernel_structure_fields(&mut self, kheap: Type, connectable: Type, pointer: Type) {
+        let pointer = self.intern_compound_type_spec(pointer, [], None);
+        let connectable_spec = self.intern_compound_type_spec(connectable, [], None);
+        for (ty, fields) in [
+            (
+                kheap,
+                vec![
+                    ("base", pointer),
+                    ("top", pointer),
+                    ("current", pointer),
+                    ("top-base", pointer),
+                ],
+            ),
+            (
+                connectable,
+                vec![
+                    ("next0", connectable_spec),
+                    ("prev0", connectable_spec),
+                    ("next1", connectable_spec),
+                    ("prev1", connectable_spec),
+                ],
+            ),
+        ] {
+            let fields = fields
+                .into_iter()
+                .enumerate()
+                .map(|(index, (name, field_type))| FieldDefinition {
+                    name: self.intern_symbol(name),
+                    field_type,
+                    offset: index as u32 * POINTER_SIZE,
+                    size: POINTER_SIZE,
+                    alignment: POINTER_SIZE,
+                    array_size: None,
+                    dynamic: false,
+                    overlay: false,
+                    inline: false,
+                    print_as: PrintAs::Default,
+                    accessor: true,
+                    replaces_parent: false,
+                    access: FieldAccess::Public,
+                    span: None,
+                })
+                .collect::<Vec<_>>();
+            let definition = &mut self
+                .definitions
+                .get_mut(&ty)
+                .expect("kernel builtin structure exists")[0]
+                .value;
+            definition.layout.size = 4 * POINTER_SIZE;
+            definition.fields = fields;
+        }
     }
 
     fn install_pair_fields(&mut self, pair: Type, object: Type) {

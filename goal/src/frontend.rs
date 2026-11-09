@@ -18,9 +18,9 @@ use crate::static_data::{
 };
 use crate::symbol_table::{EMPTY_PAIR_OFFSET, TRUE_OFFSET};
 use crate::type_system::{
-    BUILTIN_FILE_ID, BitFieldDeclaration, FieldDeclaration, MethodDeclaration, OBJECT_METHOD_COUNT,
-    PrintAs, RegisterClass, Type, TypeDefinition, TypeKind, TypeLayout, TypeSpec, TypeSystem,
-    Visibility,
+    BUILTIN_FILE_ID, BitFieldDeclaration, EnumDefinition, EnumEntry, FieldDeclaration,
+    MethodDeclaration, OBJECT_METHOD_COUNT, OverlaySelector, OverlaySpec, PrintAs, RegisterClass,
+    Type, TypeDeclaration, TypeDefinition, TypeKind, TypeLayout, TypeSpec, TypeSystem, Visibility,
 };
 use crate::value::{LoadInfo, Place, PlaceBase, PlaceProjection, Value, ValueKind};
 
@@ -58,6 +58,7 @@ pub struct FunctionData {
     pub labels: LabelTable,
     uses_frame_pointer: bool,
     next_register_number: [u32; RegisterClass::REGISTER_FILE_COUNT],
+    next_pending_register: u32,
 }
 
 impl FunctionData {
@@ -79,6 +80,7 @@ impl FunctionData {
             labels: LabelTable::default(),
             uses_frame_pointer: false,
             next_register_number: [0; RegisterClass::REGISTER_FILE_COUNT],
+            next_pending_register: u32::MAX,
         }
     }
 
@@ -101,6 +103,34 @@ impl FunctionData {
 
     pub fn allocate_gpr(&mut self, ty: TypeSpec) -> Result<VirtualRegisterId, String> {
         self.allocate_register(ty, RegisterClass::Gpr)
+    }
+
+    fn pending_register(&mut self) -> Register {
+        let register = VirtualRegisterId(self.next_pending_register);
+        self.next_pending_register -= 1;
+        Register::Virtual(register)
+    }
+
+    fn resolve_pending_register(&mut self, pending: Register, register: VirtualRegisterId) {
+        let resolved = Register::Virtual(register);
+        for instruction in &mut self.ir {
+            *instruction = instruction.map_registers(
+                |use_register| {
+                    if use_register == pending {
+                        resolved
+                    } else {
+                        use_register
+                    }
+                },
+                |definition| {
+                    if definition == pending {
+                        resolved
+                    } else {
+                        definition
+                    }
+                },
+            );
+        }
     }
 
     pub fn allocate_label(&mut self) -> Result<LabelId, String> {
@@ -714,6 +744,8 @@ impl Frontend {
         result.register_form(SymbolId(fnv64(b"define-extern")), compile_define_extern);
         result.register_form(SymbolId(fnv64(b"define")), compile_define);
         result.register_form(SymbolId(fnv64(b"defconstant")), compile_defconstant);
+        result.register_form(SymbolId(fnv64(b"defenum")), compile_defenum);
+        result.register_form(SymbolId(fnv64(b"deftype-extern")), compile_deftype_extern);
         result.register_form(SymbolId(fnv64(b"deftype")), compile_deftype);
         result.register_form(SymbolId(fnv64(b"none")), compile_none_form);
         for ty in types.builtin_types() {
@@ -1167,6 +1199,223 @@ fn parse_type_spec(
     }
 }
 
+fn syntax_boolean(objects: &ObjectStore, object: &Object) -> Result<bool, Diagnostic> {
+    let ObjectValue::Symbol(symbol) = object.value else {
+        return Err(diagnostic_at(object, "expected #t or #f"));
+    };
+    match objects.symbols.resolve(symbol) {
+        Some("#t") => Ok(true),
+        Some("#f") => Ok(false),
+        _ => Err(diagnostic_at(object, "expected #t or #f")),
+    }
+}
+
+fn parse_overlay_spec(objects: &ObjectStore, object: &Object) -> Result<OverlaySpec, Diagnostic> {
+    match object.value {
+        ObjectValue::Integer(offset) => Ok(OverlaySpec::ByteOffset(
+            u32::try_from(offset)
+                .map_err(|_| diagnostic_at(object, "overlay offset must fit in a u32"))?,
+        )),
+        ObjectValue::Symbol(field) => Ok(OverlaySpec::Field(field)),
+        ObjectValue::Pair(_) => {
+            let (head, rest) = form_parts(objects, object)?;
+            if objects.symbols.resolve(head) != Some("->") {
+                return Err(diagnostic_at(object, "overlay path must begin with `->`"));
+            }
+            let mut parts = ListCursor::new(head, object.span, rest);
+            let field = parts.required(objects, "field")?.symbol(objects)?;
+            let selectors = parts
+                .remaining(objects, "selector")?
+                .into_iter()
+                .map(|selector| match selector.object().value {
+                    ObjectValue::Symbol(field) => Ok(OverlaySelector::Field(field)),
+                    ObjectValue::Integer(index) => {
+                        Ok(OverlaySelector::Index(u32::try_from(index).map_err(
+                            |_| diagnostic_at(selector.object(), "overlay index must fit in a u32"),
+                        )?))
+                    }
+                    _ => Err(diagnostic_at(
+                        selector.object(),
+                        "overlay selector must be a field or array index",
+                    )),
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(OverlaySpec::Path { field, selectors })
+        }
+        _ => Err(diagnostic_at(
+            object,
+            "overlay must be a byte offset, field, or field path",
+        )),
+    }
+}
+
+fn compile_deftype_extern(
+    frontend: &mut Frontend,
+    form: &Object,
+    mut cursor: ListCursor,
+    _: ExpressionPosition,
+    handler: &mut FormCompileContext<'_>,
+) -> Result<Value, Diagnostic> {
+    let objects = &handler.goos.parser.objects;
+    let name = cursor.required(objects, "name")?;
+    let symbol = name.symbol(objects)?;
+    cursor.finish(objects)?;
+    let text = objects
+        .symbols
+        .resolve(symbol)
+        .ok_or_else(|| diagnostic_at(name.object(), "type has an unknown symbol ID"))?;
+    let ty = handler.types.intern_type(text);
+    let mut declaration = TypeDeclaration::new(ty, None);
+    declaration.span = form.span;
+    handler
+        .types
+        .declare_type(
+            handler.context.file.file_id,
+            declaration,
+            &handler.context.file.visibility,
+        )
+        .at(form)?;
+    Ok(Value::new(frontend.none_type, ValueKind::None))
+}
+
+fn compile_defenum(
+    frontend: &mut Frontend,
+    form: &Object,
+    mut cursor: ListCursor,
+    _: ExpressionPosition,
+    handler: &mut FormCompileContext<'_>,
+) -> Result<Value, Diagnostic> {
+    let objects = &handler.goos.parser.objects;
+    let name_argument = cursor.required(objects, "name")?;
+    let name_symbol = name_argument.symbol(objects)?;
+    let name_text = objects
+        .symbols
+        .resolve(name_symbol)
+        .ok_or_else(|| diagnostic_at(name_argument.object(), "enum has an unknown symbol ID"))?;
+    let name = handler.types.intern_type(name_text);
+    let members = cursor
+        .required_syntax(objects, "members", SyntaxType::List)?
+        .list_cursor(objects)?
+        .remaining(objects, "member")?;
+    let options = cursor.remaining(objects, "option")?;
+
+    let mut bitfield = false;
+    let mut parent = handler.types.intern_type_spec("int");
+    let mut options = options.into_iter();
+    while let Some(option) = options.next() {
+        let keyword = option.symbol(objects)?;
+        let value = options
+            .next()
+            .ok_or_else(|| diagnostic_at(option.object(), "defenum option requires a value"))?;
+        match objects.symbols.resolve(keyword) {
+            Some(":bit-list") => {
+                let symbol = value.symbol(objects)?;
+                bitfield = match objects.symbols.resolve(symbol) {
+                    Some("#t") => true,
+                    Some("#f") => false,
+                    _ => {
+                        return Err(diagnostic_at(value.object(), ":bit-list must be #t or #f"));
+                    }
+                };
+            }
+            Some(":type") => {
+                parent = parse_type_spec(
+                    handler.types,
+                    objects,
+                    &handler.context.file.visibility,
+                    value.object(),
+                )?;
+            }
+            Some(":min" | ":max") => {
+                value.integer(objects)?;
+            }
+            Some(":sql") => {
+                let symbol = value.symbol(objects)?;
+                if !matches!(objects.symbols.resolve(symbol), Some("#t" | "#f")) {
+                    return Err(diagnostic_at(value.object(), ":sql must be #t or #f"));
+                }
+            }
+            Some(keyword) => {
+                return Err(diagnostic_at(
+                    option.object(),
+                    format!("unknown defenum option `{keyword}`"),
+                ));
+            }
+            None => return Err(diagnostic_at(option.object(), "unknown defenum option")),
+        }
+    }
+
+    let mut entries = Vec::with_capacity(members.len());
+    let mut next_value = 0_i64;
+    for member in members {
+        let member_object = member.object().clone();
+        let (entry_name, number, span) = match &member_object.value {
+            ObjectValue::Symbol(name) => {
+                let value = next_value;
+                next_value = next_value
+                    .checked_add(1)
+                    .ok_or_else(|| diagnostic_at(&member_object, "enum value overflow"))?;
+                (*name, value, member_object.span)
+            }
+            ObjectValue::Pair(_) => {
+                let span = member_object.span;
+                let mut member = member.list_cursor(objects)?;
+                let name = member.required(objects, "member name")?.symbol(objects)?;
+                let value = member.required(objects, "member value")?.integer(objects)?;
+                member.finish(objects)?;
+                next_value = value
+                    .checked_add(1)
+                    .ok_or_else(|| diagnostic_at(form, "enum value overflow"))?;
+                (name, value, span)
+            }
+            _ => {
+                return Err(diagnostic_at(
+                    &member_object,
+                    "enum member must be a symbol or a (name value) list",
+                ));
+            }
+        };
+        let value = if bitfield {
+            let bit = u32::try_from(number).map_err(|_| {
+                diagnostic_at(&member_object, "enum bit number must be nonnegative")
+            })?;
+            1_i64
+                .checked_shl(bit)
+                .ok_or_else(|| diagnostic_at(&member_object, "enum bit number is too large"))?
+        } else {
+            number
+        };
+        entries.push(EnumEntry {
+            name: entry_name,
+            value,
+            span,
+        });
+    }
+
+    let parent_type = handler.types.type_spec_base(parent);
+    let runtime_type = handler
+        .types
+        .runtime_type(parent, &handler.context.file.visibility)
+        .at(form)?;
+    handler
+        .types
+        .define_enum(
+            handler.context.file.file_id,
+            EnumDefinition {
+                name,
+                parent: parent_type,
+                runtime_type,
+                entries,
+                bitfield,
+                documentation: None,
+                span: form.span,
+            },
+            &handler.context.file.visibility,
+        )
+        .at(form)?;
+    Ok(Value::new(frontend.none_type, ValueKind::None))
+}
+
 fn compile_deftype(
     frontend: &mut Frontend,
     form: &Object,
@@ -1202,6 +1451,14 @@ fn compile_deftype(
     let parent = types.intern_type(parent_text);
     let parent_spec = types.intern_type_spec(parent_text);
 
+    if !types.is_declared(name, &context.file.visibility) {
+        let mut declaration = TypeDeclaration::new(name, Some(parent));
+        declaration.span = form.span;
+        types
+            .declare_type(context.file.file_id, declaration, &context.file.visibility)
+            .at(form)?;
+    }
+
     let fields = cursor
         .required_syntax(objects, "fields", crate::frontend_parse::SyntaxType::List)?
         .list_cursor(objects)?
@@ -1209,6 +1466,8 @@ fn compile_deftype(
     let options = cursor.remaining(objects, "option")?;
     let mut documentation = None;
     let mut methods = Vec::new();
+    let mut create_runtime_type = true;
+    let mut pad_inline_arrays = None;
     let mut options = options.into_iter();
     while let Some(option) = options.next() {
         if let ObjectValue::Symbol(option_name) = option.object().value {
@@ -1219,6 +1478,8 @@ fn compile_deftype(
                     })?;
                     documentation = Some(value.string(objects)?.to_owned());
                 }
+                Some(":no-runtime-type") => create_runtime_type = false,
+                Some(":always-stack-singleton") => {}
                 Some(name) => {
                     return Err(diagnostic_at(
                         option.object(),
@@ -1277,6 +1538,11 @@ fn compile_deftype(
                     methods.push(declaration);
                 }
             }
+            Some(":pad-inline-arrays") => {
+                let value = option_cursor.required(objects, "enabled")?;
+                pad_inline_arrays = Some(syntax_boolean(objects, value.object())?);
+                option_cursor.finish(objects)?;
+            }
             Some(name) => {
                 return Err(diagnostic_at(
                     &option_object,
@@ -1311,6 +1577,9 @@ fn compile_deftype(
     let mut definition = TypeDefinition::new(name, Some(parent), layout);
     definition.span = form.span;
     definition.options.documentation = documentation.clone();
+    if let Some(enabled) = pad_inline_arrays {
+        definition.options.pad_inline_arrays = enabled;
+    }
     for method in methods {
         definition.add_method(method);
     }
@@ -1327,41 +1596,41 @@ fn compile_deftype(
             field_type_argument.object(),
         )?;
         if is_bit_field {
-            field.finish(objects)?;
             let mut declaration = BitFieldDeclaration::new(field_name, field_type);
             declaration.span = field_span;
-            definition.add_bit_field(declaration);
-        } else {
-            let mut declaration = FieldDeclaration::new(field_name, field_type);
-            declaration.span = field_span;
-            if let Some(array_size) = field.optional(objects, "array size")? {
-                declaration.array_size =
-                    Some(u32::try_from(array_size.integer(objects)?).map_err(|_| {
-                        diagnostic_at(array_size.object(), "array size must fit in a u32")
-                    })?);
-            }
-            let options = field.remaining(objects, "field option")?;
+            let options = field.remaining(objects, "bit-field option")?;
             let mut options = options.into_iter();
             while let Some(option) = options.next() {
                 let option_name = option.symbol(objects)?;
                 match objects.symbols.resolve(option_name) {
-                    Some(":dynamic") => declaration.dynamic = true,
                     Some(":offset") => {
                         let value = options.next().ok_or_else(|| {
-                            diagnostic_at(option.object(), ":offset requires a byte offset")
+                            diagnostic_at(option.object(), ":offset requires a bit offset")
                         })?;
-                        declaration.offset =
+                        declaration.offset_bits =
                             Some(u32::try_from(value.integer(objects)?).map_err(|_| {
-                                diagnostic_at(value.object(), "field offset must fit in a u32")
+                                diagnostic_at(value.object(), "bit offset must fit in a u32")
                             })?);
                     }
-                    Some(":align") => {
+                    Some(":size") => {
                         let value = options.next().ok_or_else(|| {
-                            diagnostic_at(option.object(), ":align requires a bit alignment")
+                            diagnostic_at(option.object(), ":size requires a bit count")
                         })?;
-                        declaration.align_bits =
+                        declaration.size_bits =
                             Some(u32::try_from(value.integer(objects)?).map_err(|_| {
-                                diagnostic_at(value.object(), "field alignment must fit in a u32")
+                                diagnostic_at(value.object(), "bit size must fit in a u32")
+                            })?);
+                    }
+                    Some(":overlay-at") => {
+                        let value = options.next().ok_or_else(|| {
+                            diagnostic_at(option.object(), ":overlay-at requires a bit offset")
+                        })?;
+                        declaration.overlay_at_bits =
+                            Some(u32::try_from(value.integer(objects)?).map_err(|_| {
+                                diagnostic_at(
+                                    value.object(),
+                                    "bit overlay offset must fit in a u32",
+                                )
                             })?);
                     }
                     Some(":print-as") => {
@@ -1383,6 +1652,130 @@ fn compile_deftype(
                             }
                         };
                     }
+                    Some(":accessor") => {
+                        let value = options.next().ok_or_else(|| {
+                            diagnostic_at(option.object(), ":accessor requires #t or #f")
+                        })?;
+                        declaration.accessor = syntax_boolean(objects, value.object())?;
+                    }
+                    Some(":replace") => {
+                        let value = options.next().ok_or_else(|| {
+                            diagnostic_at(option.object(), ":replace requires #t or #f")
+                        })?;
+                        declaration.replace = syntax_boolean(objects, value.object())?;
+                    }
+                    Some(name) => {
+                        return Err(diagnostic_at(
+                            option.object(),
+                            format!("bit-field option `{name}` is not implemented yet"),
+                        ));
+                    }
+                    None => {
+                        return Err(diagnostic_at(option.object(), "unknown bit-field option"));
+                    }
+                }
+            }
+            definition.add_bit_field(declaration);
+        } else {
+            let mut declaration = FieldDeclaration::new(field_name, field_type);
+            declaration.span = field_span;
+            if let Some(array_size) = field.optional(objects, "array size")? {
+                declaration.array_size =
+                    Some(u32::try_from(array_size.integer(objects)?).map_err(|_| {
+                        diagnostic_at(array_size.object(), "array size must fit in a u32")
+                    })?);
+            }
+            let options = field.remaining(objects, "field option")?;
+            let mut options = options.into_iter().peekable();
+            while let Some(option) = options.next() {
+                let option_name = option.symbol(objects)?;
+                match objects.symbols.resolve(option_name) {
+                    Some(":dynamic") => declaration.dynamic = true,
+                    Some(":inline") => {
+                        declaration.inline = match options.peek() {
+                            Some(value)
+                                if matches!(
+                                    value.object().value,
+                                    ObjectValue::Symbol(symbol)
+                                        if matches!(objects.symbols.resolve(symbol), Some("#t" | "#f"))
+                                ) =>
+                            {
+                                syntax_boolean(objects, options.next().unwrap().object())?
+                            }
+                            _ => true,
+                        };
+                    }
+                    Some(":offset") => {
+                        let value = options.next().ok_or_else(|| {
+                            diagnostic_at(option.object(), ":offset requires a byte offset")
+                        })?;
+                        declaration.offset =
+                            Some(u32::try_from(value.integer(objects)?).map_err(|_| {
+                                diagnostic_at(value.object(), "field offset must fit in a u32")
+                            })?);
+                    }
+                    Some(":align") => {
+                        let value = options.next().ok_or_else(|| {
+                            diagnostic_at(option.object(), ":align requires a bit alignment")
+                        })?;
+                        declaration.align_bits =
+                            Some(u32::try_from(value.integer(objects)?).map_err(|_| {
+                                diagnostic_at(value.object(), "field alignment must fit in a u32")
+                            })?);
+                    }
+                    Some(":overlay-at") => {
+                        let value = options.next().ok_or_else(|| {
+                            diagnostic_at(option.object(), ":overlay-at requires a location")
+                        })?;
+                        declaration.overlay_at = Some(parse_overlay_spec(objects, value.object())?);
+                    }
+                    Some(":print-as") => {
+                        let value = options.next().ok_or_else(|| {
+                            diagnostic_at(option.object(), ":print-as requires a formatter")
+                        })?;
+                        let formatter = value.symbol(objects)?;
+                        declaration.print_as = match objects.symbols.resolve(formatter) {
+                            Some("hex") => PrintAs::Hex,
+                            Some("nothing") => PrintAs::Nothing,
+                            Some("meters") => PrintAs::Meters,
+                            Some("deg") => PrintAs::Degrees,
+                            Some(name) => PrintAs::Type(types.intern_type(name)),
+                            None => {
+                                return Err(diagnostic_at(
+                                    value.object(),
+                                    "unknown :print-as formatter",
+                                ));
+                            }
+                        };
+                    }
+                    Some(":accessor") => {
+                        let value = options.next().ok_or_else(|| {
+                            diagnostic_at(option.object(), ":accessor requires #t or #f")
+                        })?;
+                        declaration.accessor = syntax_boolean(objects, value.object())?;
+                    }
+                    Some(":replace") => {
+                        let value = options.next().ok_or_else(|| {
+                            diagnostic_at(option.object(), ":replace requires #t or #f")
+                        })?;
+                        declaration.replace = syntax_boolean(objects, value.object())?;
+                    }
+                    Some(":private") => {
+                        let value = options.next().ok_or_else(|| {
+                            diagnostic_at(option.object(), ":private requires an access mode")
+                        })?;
+                        declaration.access = match value.object().value {
+                            ObjectValue::Symbol(symbol)
+                                if objects.symbols.resolve(symbol) == Some(":read-only") =>
+                            {
+                                crate::type_system::FieldAccess::ReadOnly
+                            }
+                            _ if syntax_boolean(objects, value.object())? => {
+                                crate::type_system::FieldAccess::Private
+                            }
+                            _ => crate::type_system::FieldAccess::Public,
+                        };
+                    }
                     Some(name) => {
                         return Err(diagnostic_at(
                             option.object(),
@@ -1400,7 +1793,7 @@ fn compile_deftype(
 
     let type_type = types.intern_type_spec("type");
     check_global_redefinition(frontend, types, name_symbol, type_type, context, form)?;
-    let (layout, method_count, inspect_fields) = {
+    let (layout, method_count, bit_fields) = {
         let definition = types
             .define_type(context.file.file_id, definition, &context.file.visibility)
             .at(form)?;
@@ -1408,20 +1801,34 @@ fn compile_deftype(
             definition.layout,
             definition.method_count,
             definition
-                .fields
+                .bit_fields
                 .iter()
-                .filter(|field| field.print_as != PrintAs::Nothing)
-                .map(|field| (field.name, field.field_type, field.print_as.clone()))
-                .chain(
-                    definition
-                        .bit_fields
-                        .iter()
-                        .filter(|field| field.print_as != PrintAs::Nothing)
-                        .map(|field| (field.name, field.field_type, field.print_as.clone())),
-                )
+                .map(|field| InspectField {
+                    name: field.name,
+                    field_type: field.field_type,
+                    print_as: field.print_as.clone(),
+                    array_size: None,
+                    dynamic: false,
+                    inline: false,
+                })
                 .collect::<Vec<_>>(),
         )
     };
+    let mut inspect_fields = types
+        .inherited_fields(name, &context.file.visibility)
+        .at(form)?
+        .into_iter()
+        .map(|field| InspectField {
+            name: field.name,
+            field_type: field.field_type,
+            print_as: field.print_as,
+            array_size: field.array_size,
+            dynamic: field.dynamic,
+            inline: field.inline,
+        })
+        .collect::<Vec<_>>();
+    inspect_fields.extend(bit_fields);
+    inspect_fields.retain(|field| field.print_as != PrintAs::Nothing);
     frontend
         .globals
         .entry(name_symbol)
@@ -1433,6 +1840,10 @@ fn compile_deftype(
             documentation,
             span: name_span,
         });
+
+    if !create_runtime_type {
+        return Ok(Value::new(frontend.none_type, ValueKind::None));
+    }
 
     let int_type = types.intern_type_spec("int");
     let new_name = types.intern_symbol("new");
@@ -1478,6 +1889,16 @@ fn compile_deftype(
     Ok(Value::new(frontend.none_type, ValueKind::None))
 }
 
+#[derive(Clone, Debug)]
+struct InspectField {
+    name: SymbolId,
+    field_type: TypeSpec,
+    print_as: PrintAs,
+    array_size: Option<u32>,
+    dynamic: bool,
+    inline: bool,
+}
+
 fn generate_inspect_method(
     frontend: &Frontend,
     types: &mut TypeSystem,
@@ -1485,7 +1906,7 @@ fn generate_inspect_method(
     context: &mut FrontendContext,
     form: &Object,
     owner: Type,
-    fields: &[(SymbolId, TypeSpec, PrintAs)],
+    fields: &[InspectField],
 ) -> Result<FunctionId, Diagnostic> {
     let inspect = goos.parser.objects.symbols.intern("inspect");
     let format = goos.parser.objects.symbols.intern("format");
@@ -1519,29 +1940,41 @@ fn generate_inspect_method(
     let mut formats = Vec::with_capacity(fields.len() + 1);
     formats.push("[~8x] ~A~%".to_owned());
     let integer = types.intern_type_spec("integer");
-    for (field, field_type, print_as) in fields {
+    for field in fields {
         let name = goos
             .parser
             .objects
             .symbols
-            .resolve(*field)
+            .resolve(field.name)
             .unwrap_or("<unknown-field>");
-        let formatter = match print_as {
-            PrintAs::Hex => "~X",
+        let field_type = types.type_spec_base(field.field_type);
+        let field_layout = types
+            .layout(field_type, &context.file.visibility)
+            .at(form)?;
+        let type_name = types.type_name(field_type);
+        let formatter = match &field.print_as {
+            PrintAs::Hex => "#x~X".to_owned(),
             PrintAs::Nothing => unreachable!("hidden fields were filtered above"),
-            PrintAs::Meters => "~m",
-            PrintAs::Degrees => "~d",
-            PrintAs::Type(_) => "~A",
+            PrintAs::Meters => "~m".to_owned(),
+            PrintAs::Degrees => "~d".to_owned(),
+            PrintAs::Type(ty) => format!("#<{} @ #x~X>", types.type_name(*ty)),
             PrintAs::Default => {
-                if types.type_name(types.type_spec_base(*field_type)) == "float" {
-                    "~f"
+                if let Some(count) = field.array_size.or(field.dynamic.then_some(0)) {
+                    formats.push(format!("~T{name}[{count}] @ #x~X~%"));
+                    continue;
+                } else if field.inline || field_layout.kind == TypeKind::Structure {
+                    format!("#<{type_name} @ #x~X>")
+                } else if type_name == "pointer" {
+                    "#x~X".to_owned()
+                } else if type_name == "float" {
+                    "~f".to_owned()
                 } else if types
-                    .is_subtype(integer, *field_type, &context.file.visibility)
+                    .is_subtype(integer, field.field_type, &context.file.visibility)
                     .at(form)?
                 {
-                    "~D"
+                    "~D".to_owned()
                 } else {
-                    "~A"
+                    "~A".to_owned()
                 }
             }
         };
@@ -1577,7 +2010,7 @@ fn generate_inspect_method(
         ExpressionPosition::Statement,
     )?;
 
-    for ((field, _, _), text) in fields.iter().zip(formats.iter().skip(1)) {
+    for (field, text) in fields.iter().zip(formats.iter().skip(1)) {
         let true_value = symbol_object(types, true_symbol);
         let format_string = string_constant(types, context, text).at(form)?;
         let field_value = field_place(
@@ -1585,7 +2018,7 @@ fn generate_inspect_method(
             &context.file.visibility,
             Register::Virtual(this),
             owner_type,
-            *field,
+            field.name,
         )
         .at(form)?;
         compile_named_call(
@@ -2068,6 +2501,7 @@ fn compile_defmethod(
 
     let mut body = cursor.remaining_body(objects)?;
     take_documentation(&mut body);
+    let segment = take_function_segment(objects, &mut body)?;
     let body = body
         .into_iter()
         .map(ParsedArgument::into_object)
@@ -2094,7 +2528,7 @@ fn compile_defmethod(
                 owner,
                 name: method_name,
             },
-            segment: Segment::Main,
+            segment,
             parameters: &parameters,
             expressions: &body,
         },
@@ -2416,6 +2850,20 @@ fn compile_expression_in_position(
                 Some("/") => ArithmeticOperation::Divide,
                 Some("mod" | "rem") => ArithmeticOperation::Remainder,
                 Some(name) => {
+                    let enum_type = types.intern_type(name);
+                    if let Ok(definition) = types
+                        .enum_definition(enum_type, &context.file.visibility)
+                        .cloned()
+                    {
+                        return compile_enum_value(
+                            types,
+                            goos,
+                            expression,
+                            head,
+                            rest,
+                            &definition,
+                        );
+                    }
                     if let Some(binding) = context
                         .current_function()
                         .at(expression)?
@@ -2486,6 +2934,58 @@ fn compile_expression_in_position(
             "this expression is not implemented yet",
         )),
     }
+}
+
+fn compile_enum_value(
+    types: &mut TypeSystem,
+    goos: &Interpreter,
+    expression: &Object,
+    head: SymbolId,
+    rest: Object,
+    definition: &EnumDefinition,
+) -> Result<Value, Diagnostic> {
+    let arguments = ListCursor::new(head, expression.span, rest)
+        .remaining(&goos.parser.objects, "enum member")?;
+    if !definition.bitfield && arguments.len() != 1 {
+        return Err(diagnostic_at(
+            expression,
+            format!(
+                "enum `{}` requires exactly one member",
+                types.type_name(definition.name)
+            ),
+        ));
+    }
+
+    let mut value = 0_i64;
+    for argument in arguments {
+        let member = argument.symbol(&goos.parser.objects)?;
+        let entry = definition
+            .entries
+            .iter()
+            .find(|entry| entry.name == member)
+            .ok_or_else(|| {
+                let member = goos
+                    .parser
+                    .objects
+                    .symbols
+                    .resolve(member)
+                    .unwrap_or("<unknown>");
+                diagnostic_at(
+                    argument.object(),
+                    format!(
+                        "enum `{}` has no member `{member}`",
+                        types.type_name(definition.name)
+                    ),
+                )
+            })?;
+        value = if definition.bitfield {
+            value | entry.value
+        } else {
+            entry.value
+        };
+    }
+    let ty = types.intern_compound_type_spec(definition.name, [], None);
+    Ok(Value::new(ty, ValueKind::Integer(i128::from(value))))
 }
 
 fn compile_sequence(
@@ -2610,15 +3110,19 @@ fn compile_let(
             .define_local(name, LexicalBinding { register })
             .at(expression)?;
     }
-    let mut result = compile_sequence(
-        frontend,
-        types,
-        goos,
-        context,
-        expression,
-        &body,
-        ExpressionPosition::Value,
-    )?;
+    let mut result = if body.is_empty() {
+        Value::new(context.none_type, ValueKind::None)
+    } else {
+        compile_sequence(
+            frontend,
+            types,
+            goos,
+            context,
+            expression,
+            &body,
+            ExpressionPosition::Value,
+        )?
+    };
     if result.kind != ValueKind::None {
         let source = flush_value(context, expression, &mut result)?;
         let layout = types
@@ -2878,6 +3382,26 @@ fn compile_condition(
         }
         _ => {
             let mut value = compile_expression(frontend, types, goos, context, expression)?;
+            if let ValueKind::Place(Place {
+                base: PlaceBase::Register(base),
+                projection: PlaceProjection::BitField(field),
+            }) = value.kind
+                && !field.use_128_bits
+                && field.offset == 0
+                && field.size == 32
+            {
+                let int = types.intern_type_spec("int");
+                let comparison = context
+                    .current_function_data_mut()
+                    .at(expression)?
+                    .allocate_gpr(int)
+                    .at(expression)?;
+                context
+                    .current_function_data_mut()
+                    .at(expression)?
+                    .emit_integer_subtract(comparison, base, PhysicalRegister::Gpr(Gpr::S7));
+                return Ok(BranchCondition::NonZero(comparison.into()));
+            }
             let value = flush_value(context, expression, &mut value)?;
             Ok(BranchCondition::NotEqual(
                 Register::Physical(PhysicalRegister::Gpr(Gpr::S7)),
@@ -3315,6 +3839,48 @@ fn compile_logical(
                 .at(operand)?,
             None => value.ty,
         });
+        if !is_or
+            && let ValueKind::Place(Place {
+                base: PlaceBase::Register(base),
+                projection: PlaceProjection::BitField(field),
+            }) = &value.kind
+            && !field.use_128_bits
+            && field.offset == 0
+            && field.size == 32
+        {
+            let base = *base;
+            let int = types.intern_type_spec("int");
+            let comparison = context
+                .current_function_data_mut()
+                .at(operand)?
+                .allocate_gpr(int)
+                .at(operand)?;
+            context.current_function_data_mut().at(operand)?.emit(
+                IrInstruction::IntegerArithmetic {
+                    operation: ArithmeticOperation::WordSubtract,
+                    signed: true,
+                    destination: comparison.into(),
+                    left: base,
+                    right: Register::Physical(PhysicalRegister::Gpr(Gpr::S7)),
+                },
+            );
+            let destination = match result {
+                Some(result) => result,
+                None => {
+                    let register = context
+                        .current_function_data_mut()
+                        .at(expression)?
+                        .allocate_gpr(object)
+                        .at(expression)?;
+                    result = Some(register);
+                    register
+                }
+            };
+            let data = context.current_function_data_mut().at(operand)?;
+            data.emit_branch_likely(BranchCondition::Zero(comparison.into()), end);
+            data.emit_move(destination, PhysicalRegister::Gpr(Gpr::S7));
+            continue;
+        }
         let value = flush_value(context, operand, &mut value)?;
         let destination = match result {
             Some(result) => result,
@@ -3443,8 +4009,7 @@ fn compile_cond(
     let result = context
         .current_function_data_mut()
         .at(expression)?
-        .allocate_gpr(object_type)
-        .at(expression)?;
+        .pending_register();
     let end = context
         .current_function_data_mut()
         .at(expression)?
@@ -3484,7 +4049,7 @@ fn compile_cond(
                 data.emit(IrInstruction::Nop);
             } else {
                 data.emit(IrInstruction::Move {
-                    destination: result.into(),
+                    destination: result,
                     source: Register::Physical(PhysicalRegister::Gpr(crate::ir::Gpr::S7)),
                     must_emit: false,
                 });
@@ -3511,7 +4076,7 @@ fn compile_cond(
                 .current_function_data_mut()
                 .at(expression)?
                 .emit(IrInstruction::Move {
-                    destination: result.into(),
+                    destination: result,
                     source,
                     must_emit: false,
                 });
@@ -3551,15 +4116,16 @@ fn compile_cond(
         .layout(types.type_spec_base(result_type), &context.file.visibility)
         .at(expression)?
         .register_class;
-    let result_register = &mut context
+    let result_register = context
         .current_function_data_mut()
         .at(expression)?
-        .registers[result.0 as usize];
-    result_register.ty = result_type;
-    if result_class == RegisterClass::Gpr128 {
-        result_register.class = RegisterClass::Gpr128;
-    }
-    Ok(Value::register(result_type, result))
+        .allocate_register(result_type, result_class)
+        .at(expression)?;
+    context
+        .current_function_data_mut()
+        .at(expression)?
+        .resolve_pending_register(result, result_register);
+    Ok(Value::register(result_type, result_register))
 }
 
 fn compile_return(
@@ -4803,7 +5369,7 @@ fn compile_index_access(
                 .ok_or_else(|| diagnostic_at(index_expression, "array base offset overflows"))?,
         ),
         _ => (
-            flush_value(context, index_expression, &mut array)?,
+            flush_address_value(context, index_expression, &mut array)?,
             i64::from(deref.offset),
         ),
     };
@@ -5367,6 +5933,38 @@ fn flush_gpr_operand(
     }
 }
 
+fn flush_address_value(
+    context: &mut FrontendContext,
+    expression: &Object,
+    value: &mut Value,
+) -> Result<Register, Diagnostic> {
+    if let ValueKind::Place(Place {
+        base: PlaceBase::Register(base),
+        projection: PlaceProjection::BitField(field),
+    }) = value.kind
+        && !field.use_128_bits
+        && field.offset == 0
+        && field.size == 32
+    {
+        let register = context
+            .current_function_data_mut()
+            .at(expression)?
+            .allocate_gpr(value.ty)
+            .at(expression)?;
+        context
+            .current_function_data_mut()
+            .at(expression)?
+            .emit(IrInstruction::ExtractWord {
+                part: DoublewordPart::Low,
+                destination: register.into(),
+                source: base,
+            });
+        value.kind = ValueKind::Register(register.into());
+        return Ok(register.into());
+    }
+    flush_value(context, expression, value)
+}
+
 fn flush_value(
     context: &mut FrontendContext,
     expression: &Object,
@@ -5646,48 +6244,107 @@ fn flush_value(
             base: PlaceBase::Register(base),
             projection: PlaceProjection::BitField(field),
         }) => {
-            if !field.use_128_bits || field.size != 32 || !matches!(field.offset, 0 | 32 | 64 | 96)
-            {
-                return Err(diagnostic_at(
-                    expression,
-                    "this bit-field extraction is not implemented yet",
-                ));
+            if !field.use_128_bits && field.offset == 0 && field.size == 64 {
+                value.kind = ValueKind::Register(base);
+                return Ok(base);
             }
-            let source = if field.offset >= 64 {
-                let int_type = value.ty;
-                let upper = context
+            if !field.use_128_bits && field.size == 32 && matches!(field.offset, 0 | 32) {
+                let register = context
                     .current_function_data_mut()
                     .at(expression)?
-                    .allocate_gpr(int_type)
+                    .allocate_gpr(value.ty)
+                    .at(expression)?;
+                if field.offset == 32 {
+                    context.current_function_data_mut().at(expression)?.emit(
+                        if field.sign_extend {
+                            IrInstruction::ExtractWord {
+                                part: DoublewordPart::High,
+                                destination: register.into(),
+                                source: base,
+                            }
+                        } else {
+                            IrInstruction::IntegerShiftImmediate {
+                                operation: ShiftOperation::LogicalRight,
+                                destination: register.into(),
+                                value: base,
+                                amount: 32,
+                            }
+                        },
+                    );
+                } else if field.sign_extend {
+                    context.current_function_data_mut().at(expression)?.emit(
+                        IrInstruction::ExtractWord {
+                            part: DoublewordPart::Low,
+                            destination: register.into(),
+                            source: base,
+                        },
+                    );
+                } else {
+                    let shifted = context
+                        .current_function_data_mut()
+                        .at(expression)?
+                        .allocate_gpr(value.ty)
+                        .at(expression)?;
+                    let data = context.current_function_data_mut().at(expression)?;
+                    data.emit(IrInstruction::IntegerShiftImmediate {
+                        operation: ShiftOperation::Left,
+                        destination: shifted.into(),
+                        value: base,
+                        amount: 32,
+                    });
+                    data.emit(IrInstruction::IntegerShiftImmediate {
+                        operation: ShiftOperation::LogicalRight,
+                        destination: register.into(),
+                        value: shifted.into(),
+                        amount: 32,
+                    });
+                }
+                register.into()
+            } else {
+                if !field.use_128_bits
+                    || field.size != 32
+                    || !matches!(field.offset, 0 | 32 | 64 | 96)
+                {
+                    return Err(diagnostic_at(
+                        expression,
+                        "this bit-field extraction is not implemented yet",
+                    ));
+                }
+                let source = if field.offset >= 64 {
+                    let int_type = value.ty;
+                    let upper = context
+                        .current_function_data_mut()
+                        .at(expression)?
+                        .allocate_gpr(int_type)
+                        .at(expression)?;
+                    context.current_function_data_mut().at(expression)?.emit(
+                        IrInstruction::Gpr128Upper64 {
+                            destination: upper.into(),
+                            source: base,
+                        },
+                    );
+                    Register::Virtual(upper)
+                } else {
+                    base
+                };
+                let register = context
+                    .current_function_data_mut()
+                    .at(expression)?
+                    .allocate_gpr(value.ty)
                     .at(expression)?;
                 context.current_function_data_mut().at(expression)?.emit(
-                    IrInstruction::Gpr128Upper64 {
-                        destination: upper.into(),
-                        source: base,
+                    IrInstruction::ExtractWord {
+                        part: if field.offset % 64 == 0 {
+                            DoublewordPart::Low
+                        } else {
+                            DoublewordPart::High
+                        },
+                        destination: register.into(),
+                        source,
                     },
                 );
-                Register::Virtual(upper)
-            } else {
-                base
-            };
-            let register = context
-                .current_function_data_mut()
-                .at(expression)?
-                .allocate_gpr(value.ty)
-                .at(expression)?;
-            context
-                .current_function_data_mut()
-                .at(expression)?
-                .emit(IrInstruction::ExtractWord {
-                    part: if field.offset % 64 == 0 {
-                        DoublewordPart::Low
-                    } else {
-                        DoublewordPart::High
-                    },
-                    destination: register.into(),
-                    source,
-                });
-            register.into()
+                register.into()
+            }
         }
         ValueKind::None => {
             return Err(diagnostic_at(expression, "none has no register value"));

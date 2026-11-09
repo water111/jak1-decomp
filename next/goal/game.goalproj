@@ -1,6 +1,6 @@
 file kernel/gcommon.gc
 file kernel/gstring-h.gc
-file kernel/gkernel-h.gc
+file kernel/gkernel-h.gc kernel/gcommon.gc
 file kernel/gkernel.gc
 file kernel/pskernel.gc
 file kernel/gstring.gc

@@ -309,6 +309,7 @@ pub enum BranchDelay {
 pub enum ArithmeticOperation {
     Add,
     Subtract,
+    WordSubtract,
     Multiply,
     Divide,
     Remainder,

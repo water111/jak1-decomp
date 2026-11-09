@@ -329,6 +329,9 @@ pub fn generate_function(
                     ArithmeticOperation::Subtract => {
                         words.push(ee::encode_register(R::Dsubu, destination, left, right))
                     }
+                    ArithmeticOperation::WordSubtract => {
+                        words.push(ee::encode_register(R::Subu, destination, left, right))
+                    }
                     ArithmeticOperation::Multiply => words.push(ee::encode_register(
                         if *signed { R::Mult } else { R::Multu },
                         destination,
@@ -374,6 +377,9 @@ pub fn generate_function(
                 let operation = match operation {
                     ArithmeticOperation::Add => FloatOpcode::Add,
                     ArithmeticOperation::Subtract => FloatOpcode::Subtract,
+                    ArithmeticOperation::WordSubtract => {
+                        return Err("word subtraction cannot operate on floats".to_owned());
+                    }
                     ArithmeticOperation::Multiply => FloatOpcode::Multiply,
                     ArithmeticOperation::Divide => FloatOpcode::Divide,
                     ArithmeticOperation::Remainder => {
